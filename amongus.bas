@@ -62,10 +62,14 @@ FOR i = 1 TO 15
 NEXT
 
 CONST timeout = 1
-DIM userName$
+DIM userName$, userColor%
+INPUT "Name: ", userName$
+DO
+    INPUT "Color (1-15): ", userColor%
+LOOP WHILE userColor% < 1 OR userColor% > 15
+
 DO
     COLOR 15
-    INPUT "Name: ", userName$
     PRINT "-------------------------"
     PRINT "(1) Free play"
     PRINT "(2) Host game locally"
@@ -164,7 +168,7 @@ ELSE
     player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
     player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
     player(me).state = True
-    player(me).color = 1
+    player(me).color = userColor%
 END IF
 DO
     SELECT CASE mode
@@ -177,7 +181,7 @@ DO
                 player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
                 player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
                 player(me).state = True
-                player(me).color = 1
+                player(me).color = userColor%
             END IF
 
             IF totalClients < UBOUND(player) THEN
@@ -276,7 +280,7 @@ DO
                         player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
                         player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
                         player(me).state = True
-                        player(me).color = 1
+                        player(me).color = userColor%
                     CASE "COLOR" 'server color changes must always be applied
                         player(me).color = CVI(value$)
                     CASE "PLAYERCOLOR"
