@@ -1,6 +1,6 @@
 OPTION _EXPLICIT
 
-$LET DEBUGGING = TRUE
+$LET DEBUGGING = FALSE
 $IF DEBUGGING = TRUE THEN
     $CONSOLE
 $END IF
@@ -13,21 +13,23 @@ CONST mode_onlinehost = 3
 CONST mode_onlineclient = 4
 
 TYPE object
+    name AS STRING
     handle AS LONG
     x AS SINGLE
     y AS SINGLE
     state AS INTEGER
-    COLOR AS INTEGER
-    colorSent AS _BYTE
+    color AS INTEGER
+    basicInfoSent AS _BYTE
     ping AS SINGLE
 END TYPE
 
 DIM SHARED mode AS INTEGER
 DIM SHARED totalClients AS INTEGER
-DIM SHARED playerStream(1 TO 9) AS STRING, incoming$
+DIM SHARED playerStream(1 TO 10) AS STRING, incoming$
 DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
 DIM SHARED colors(1 TO 15) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
+DIM SHARED warning(1 TO 30) AS object
 DIM idSet AS _BYTE
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
@@ -56,8 +58,11 @@ FOR i = 1 TO 15
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
 
+CONST timeout = 1
+DIM userName$
 DO
     COLOR 15
+    INPUT "Name: ", userName$
     PRINT "-------------------------"
     PRINT "(1) Free play"
     PRINT "(2) Host game locally"
@@ -87,8 +92,8 @@ DO
                 IF host THEN EXIT DO
                 attempt = attempt + 1
                 LOCATE r, c: PRINT USING "###%"; (attempt / 1000) * 100;
-                _LIMIT 10
-            LOOP WHILE attempt < 1000
+                _LIMIT 30
+            LOOP WHILE attempt < 100
             IF host THEN mode = mode_localhost: EXIT DO
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
             PRINT "Failed to become a local host."
@@ -104,8 +109,8 @@ DO
                 IF server THEN EXIT DO
                 attempt = attempt + 1
                 LOCATE r, c: PRINT USING "###%"; (attempt / 1000) * 100;
-                _LIMIT 10
-            LOOP WHILE attempt < 1000
+                _LIMIT 30
+            LOOP WHILE attempt < 100
             IF server THEN mode = mode_localclient: EXIT DO
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
             PRINT "Failed to connect to local host."
@@ -125,10 +130,12 @@ DIM SHARED camera AS object
 
 map = _NEWIMAGE(_WIDTH * 3, _HEIGHT * 2, 32)
 _DEST map
+RANDOMIZE 6
 FOR i = 1 TO 50
     CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
 NEXT
 _DEST 0
+RANDOMIZE TIMER
 
 CONST keyUP = 18432
 CONST keyDOWN = 20480
@@ -149,10 +156,11 @@ IF mode > 1 THEN
 ELSE
     idSet = True
     me = 1
-    player(me).x = _WIDTH / 2
-    player(me).y = _HEIGHT / 2
+    player(me).name = userName$
+    player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
+    player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
     player(me).state = True
-    player(me).COLOR = 1
+    player(me).color = 1
 END IF
 DO
     SELECT CASE mode
@@ -161,10 +169,11 @@ DO
             IF idSet = False THEN
                 idSet = True
                 me = 1
-                player(me).x = _WIDTH / 2
-                player(me).y = _HEIGHT / 2
+                player(me).name = userName$
+                player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
+                player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
                 player(me).state = True
-                player(me).COLOR = 1
+                player(me).color = 1
             END IF
 
             IF totalClients < UBOUND(player) THEN
@@ -187,10 +196,11 @@ DO
 
             FOR i = 1 TO UBOUND(player)
                 IF player(i).state = False OR i = me THEN _CONTINUE
-                IF TIMER - player(i).ping > 3 THEN
+                IF TIMER - player(i).ping > timeout THEN
                     'player inactive
                     player(i).state = False
                     CLOSE player(i).handle
+                    addWarning player(i).name + " lost connection."
                     _CONTINUE
                 END IF
 
@@ -207,20 +217,22 @@ DO
                     endMarker = INSTR(playerStream(i), "<END>")
                     player(i).ping = TIMER
                     SELECT CASE packet$
+                        CASE "NAME"
+                            player(i).name = info$
                         CASE "COLOR" 'received once per player
                             DIM newcolor AS INTEGER, changed AS _BYTE
                             newcolor = CVI(info$)
                             changed = False
                             'check if this color is already in use, so a random one can be assigned
                             FOR j = 1 TO UBOUND(player)
-                                IF player(j).state = True AND player(j).COLOR = newcolor THEN
+                                IF player(j).state = True AND player(j).color = newcolor THEN
                                     newcolor = newcolor + 1
                                     IF newcolor > UBOUND(colors) THEN newcolor = 1
                                     changed = True
                                     j = 0 'check again
                                 END IF
                             NEXT
-                            player(i).COLOR = newcolor
+                            player(i).color = newcolor
                             IF changed THEN
                                 info$ = "COLOR>" + MKI$(newcolor) + "<END>"
                                 PUT #player(i).handle, , info$
@@ -231,21 +243,33 @@ DO
                     END SELECT
                 LOOP
 
+                'send ping
+                info$ = "PING><END>"
+                PUT #player(i).handle, , info$
+
                 'send all players' data
                 FOR j = 1 TO UBOUND(player)
                     IF j = i THEN _CONTINUE
-                    info$ = "PLAYERCOLOR>" + MKI$(j) + MKI$(player(j).COLOR) + "<END>"
-                    PUT #player(i).handle, , info$
-                    info$ = "PLAYERPOS>" + MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y) + "<END>"
-                    PUT #player(i).handle, , info$
+                    IF player(j).state = True THEN
+                        info$ = "PLAYERCOLOR>" + MKI$(j) + MKI$(player(j).color) + "<END>"
+                        PUT #player(i).handle, , info$
+                        info$ = "PLAYERPOS>" + MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y) + "<END>"
+                        PUT #player(i).handle, , info$
+                        info$ = "PLAYERNAME>" + MKI$(j) + player(j).name + "<END>"
+                        PUT #player(i).handle, , info$
+                    ELSE
+                        info$ = "PLAYEROFFLINE>" + MKI$(j) + "<END>"
+                        PUT #player(i).handle, , info$
+                    END IF
                 NEXT
             NEXT
 
         CASE mode_localclient, mode_onlineclient
             IF idSet THEN
-                IF player(me).colorSent = False THEN
-                    player(me).colorSent = True
-                    sendInfo "COLOR", MKI$(player(me).COLOR)
+                IF player(me).basicInfoSent = False THEN
+                    player(me).basicInfoSent = True
+                    sendInfo "COLOR", MKI$(player(me).color)
+                    sendInfo "NAME", player(me).name
                 END IF
 
                 sendInfo "POS", MKI$(player(me).x) + MKI$(player(me).y)
@@ -267,28 +291,32 @@ DO
                     CASE "ID" 'first info sent by server
                         idSet = True
                         me = CVI(info$)
-                        player(me).x = _WIDTH / 2
-                        player(me).y = _HEIGHT / 2
+                        player(me).name = userName$
+                        player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
+                        player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
                         player(me).state = True
-                        player(me).COLOR = 1
+                        player(me).color = 1
                     CASE "COLOR" 'server color changes must always be applied
-                        player(me).COLOR = CVI(info$)
+                        player(me).color = CVI(info$)
                     CASE "PLAYERCOLOR"
-                        player(CVI(LEFT$(info$, 2))).COLOR = CVI(RIGHT$(info$, 2))
+                        player(CVI(LEFT$(info$, 2))).color = CVI(RIGHT$(info$, 2))
                     CASE "PLAYERPOS"
                         player(CVI(LEFT$(info$, 2))).state = True
                         player(CVI(LEFT$(info$, 2))).ping = TIMER
                         player(CVI(LEFT$(info$, 2))).x = CVS(MID$(info$, 3, 4))
                         player(CVI(LEFT$(info$, 2))).y = CVS(RIGHT$(info$, 4))
+                    CASE "PLAYERNAME"
+                        player(CVI(LEFT$(info$, 2))).name = MID$(info$, 3)
+                    CASE "PLAYEROFFLINE"
+                        IF player(CVI(info$)).state = True THEN
+                            player(CVI(info$)).state = False
+                            addWarning player(CVI(info$)).name + " left the game."
+                        END IF
+                    CASE "PING"
+                        DIM serverPing AS SINGLE
+                        serverPing = TIMER
                 END SELECT
             LOOP
-
-            FOR i = 1 TO UBOUND(player)
-                IF i = me THEN _CONTINUE
-                IF TIMER - player(i).ping > 3 THEN
-                    player(i).state = False
-                END IF
-            NEXT
     END SELECT
 
     IF playerSpeed < minSpeed THEN playerSpeed = minSpeed
@@ -310,22 +338,64 @@ DO
 
     CLS
 
+    DIM shipFlotation AS SINGLE, shipFloatIntensity AS SINGLE
+    shipFlotation = shipFlotation + .05
+    IF shipFlotation > _PI(2) THEN shipFlotation = shipFlotation - _PI(2)
+    shipFloatIntensity = 1.5
+
     _DONTBLEND
-    _PUTIMAGE (camera.x, camera.y), map
+    _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatIntensity, camera.y + SIN(shipFlotation) * shipFloatIntensity), map
     _BLEND
 
+    IF (mode = mode_localclient OR mode = mode_onlineclient) THEN
+        IF TIMER - serverPing > timeout THEN
+            SCREEN 0
+            PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
+            PRINT "Disconnected from host."
+            END
+        ELSE
+            PRINT USING "###ms"; ((TIMER - serverPing) - FIX(TIMER - serverPing)) * 1000;
+        END IF
+    END IF
+
+    DIM x AS SINGLE, y AS SINGLE
     FOR i = 1 TO UBOUND(player)
-        IF player(i).state = False OR player(i).COLOR = 0 THEN _CONTINUE
-        CircleFill player(i).x + camera.x, player(i).y + camera.y, 15, _RGB32(0)
-        CircleFill player(i).x + camera.x, player(i).y + camera.y, 10, colors(player(i).COLOR)
+        IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
+        x = player(i).x + camera.x + COS(shipFlotation) * shipFloatIntensity
+        y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatIntensity
+        CircleFill x, y + 6, 15, _RGB32(0, 50)
+        CircleFill x, y, 15, _RGB32(0)
+        CircleFill x, y, 10, colors(player(i).color)
+        _PRINTSTRING (x - _PRINTWIDTH(player(i).name) / 2, y - 20), player(i).name
     NEXT
     'LINE (_WIDTH / 2 - cameraWindow, _HEIGHT / 2 - cameraWindow)-STEP(cameraWindow * 2, cameraWindow * 2), , B
+
+    'display warnings
+    FOR i = 1 TO UBOUND(warning)
+        COLOR _RGB32(128, 50, 22)
+        IF warning(i).state = True THEN
+            _PRINTSTRING (10, _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
+            IF TIMER - warning(i).ping > 2 THEN warning(i).state = False
+        END IF
+    NEXT
 
     _DISPLAY
     _LIMIT 60
 LOOP UNTIL _KEYHIT = 27
 CLOSE
 SYSTEM
+
+SUB addWarning (text$)
+    DIM i AS INTEGER
+    FOR i = 1 TO UBOUND(warning)
+        IF warning(i).state = False THEN
+            warning(i).state = True
+            warning(i).name = text$
+            warning(i).ping = TIMER
+            EXIT FOR
+        END IF
+    NEXT
+END SUB
 
 SUB sendInfo (id$, info$)
     DIM packet$
@@ -389,4 +459,3 @@ SUB db (text$)
         dummy$ = text$
     $END IF
 END SUB
-
