@@ -85,13 +85,14 @@ DO
             COLOR 7
             PRINT "Attempting to become a local host... ";
             r = CSRLIN: c = POS(1)
+            CONST maxAttempts = 100
             attempt = 0
             DO
                 host = 0
                 host = _OPENHOST("TCP/IP:51512")
                 IF host THEN EXIT DO
                 attempt = attempt + 1
-                LOCATE r, c: PRINT USING "###%"; (attempt / 1000) * 100;
+                LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
                 _LIMIT 30
             LOOP WHILE attempt < 100
             IF host THEN mode = mode_localhost: EXIT DO
@@ -108,7 +109,7 @@ DO
                 server = _OPENCLIENT("TCP/IP:51512:localhost")
                 IF server THEN EXIT DO
                 attempt = attempt + 1
-                LOCATE r, c: PRINT USING "###%"; (attempt / 1000) * 100;
+                LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
                 _LIMIT 30
             LOOP WHILE attempt < 100
             IF server THEN mode = mode_localclient: EXIT DO
