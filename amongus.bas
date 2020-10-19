@@ -76,7 +76,7 @@ DO
         _LIMIT 30
     LOOP UNTIL choice >= "1" AND choice <= "5"
 
-    DIM SHARED server AS LONG, host AS LONG
+    DIM SHARED server AS object, host AS LONG
     DIM c AS INTEGER, attempt AS INTEGER
     SELECT CASE VAL(choice)
         CASE 1
@@ -105,17 +105,17 @@ DO
             r = CSRLIN: c = POS(1)
             attempt = 0
             DO
-                server = 0
-                server = _OPENCLIENT("TCP/IP:51512:localhost")
-                IF server THEN EXIT DO
+                server.handle = 0
+                server.handle = _OPENCLIENT("TCP/IP:51512:localhost")
+                IF server.handle THEN EXIT DO
                 attempt = attempt + 1
                 LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
                 _LIMIT 30
             LOOP WHILE attempt < 100
-            IF server THEN mode = mode_localclient: EXIT DO
+            IF server.handle THEN mode = mode_localclient: EXIT DO
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
             PRINT "Failed to connect to local host."
-            CLOSE server
+            CLOSE server.handle
         CASE 4
         CASE 5
     END SELECT
@@ -184,10 +184,10 @@ DO
                     totalClients = totalClients + 1
                     FOR i = 1 TO UBOUND(player)
                         IF player(i).state = False THEN
+                            player(i).color = 0
                             player(i).handle = newClient
                             player(i).state = True
-                            packet$ = "ID>" + MKI$(i) + "<END>"
-                            PUT #player(i).handle, , packet$
+                            sendData player(i), "ID", MKI$(i)
                             player(i).ping = TIMER
                             EXIT FOR
                         END IF
@@ -202,6 +202,7 @@ DO
                     player(i).state = False
                     CLOSE player(i).handle
                     addWarning player(i).name + " lost connection."
+                    totalClients = totalClients - 1
                     _CONTINUE
                 END IF
 
@@ -235,8 +236,7 @@ DO
                             NEXT
                             player(i).color = newcolor
                             IF changed THEN
-                                info$ = "COLOR>" + MKI$(newcolor) + "<END>"
-                                PUT #player(i).handle, , info$
+                                sendData player(i), "COLOR", MKI$(newcolor)
                             END IF
                         CASE "POS"
                             player(i).x = CVI(LEFT$(info$, 2))
@@ -245,22 +245,17 @@ DO
                 LOOP
 
                 'send ping
-                info$ = "PING><END>"
-                PUT #player(i).handle, , info$
+                sendData player(i), "PING", ""
 
                 'send all players' data
                 FOR j = 1 TO UBOUND(player)
                     IF j = i THEN _CONTINUE
                     IF player(j).state = True THEN
-                        info$ = "PLAYERCOLOR>" + MKI$(j) + MKI$(player(j).color) + "<END>"
-                        PUT #player(i).handle, , info$
-                        info$ = "PLAYERPOS>" + MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y) + "<END>"
-                        PUT #player(i).handle, , info$
-                        info$ = "PLAYERNAME>" + MKI$(j) + player(j).name + "<END>"
-                        PUT #player(i).handle, , info$
+                        sendData player(i), "PLAYERCOLOR", MKI$(j) + MKI$(player(j).color)
+                        sendData player(i), "PLAYERPOS", MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
+                        sendData player(i), "PLAYERNAME", MKI$(j) + player(j).name
                     ELSE
-                        info$ = "PLAYEROFFLINE>" + MKI$(j) + "<END>"
-                        PUT #player(i).handle, , info$
+                        sendData player(i), "PLAYEROFFLINE", MKI$(j)
                     END IF
                 NEXT
             NEXT
@@ -269,14 +264,14 @@ DO
             IF idSet THEN
                 IF player(me).basicInfoSent = False THEN
                     player(me).basicInfoSent = True
-                    sendInfo "COLOR", MKI$(player(me).color)
-                    sendInfo "NAME", player(me).name
+                    sendData server, "COLOR", MKI$(player(me).color)
+                    sendData server, "NAME", player(me).name
                 END IF
 
-                sendInfo "POS", MKI$(player(me).x) + MKI$(player(me).y)
+                sendData server, "POS", MKI$(player(me).x) + MKI$(player(me).y)
             END IF
 
-            GET #server, , incoming$
+            GET #server.handle, , incoming$
             serverStream = serverStream + incoming$
             endMarker = INSTR(serverStream, "<END>")
             DO WHILE endMarker > 0
@@ -367,6 +362,9 @@ DO
         CircleFill x, y + 6, 15, _RGB32(0, 50)
         CircleFill x, y, 15, _RGB32(0)
         CircleFill x, y, 10, colors(player(i).color)
+        COLOR _RGB32(0)
+        _PRINTSTRING (1 + x - _PRINTWIDTH(player(i).name) / 2, 1 + y - 20), player(i).name
+        COLOR _RGB32(255)
         _PRINTSTRING (x - _PRINTWIDTH(player(i).name) / 2, y - 20), player(i).name
     NEXT
     'LINE (_WIDTH / 2 - cameraWindow, _HEIGHT / 2 - cameraWindow)-STEP(cameraWindow * 2, cameraWindow * 2), , B
@@ -398,10 +396,10 @@ SUB addWarning (text$)
     NEXT
 END SUB
 
-SUB sendInfo (id$, info$)
+SUB sendData (client AS object, id$, info$)
     DIM packet$
     packet$ = id$ + ">" + info$ + "<END>"
-    PUT #server, , packet$
+    PUT #client.handle, , packet$
 END SUB
 
 SUB adjustCamera
