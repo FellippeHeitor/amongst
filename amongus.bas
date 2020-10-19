@@ -25,7 +25,7 @@ END TYPE
 
 DIM SHARED mode AS INTEGER
 DIM SHARED totalClients AS INTEGER
-DIM SHARED playerStream(1 TO 10) AS STRING, incoming$
+DIM SHARED playerStream(1 TO 10) AS STRING
 DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
 DIM SHARED colors(1 TO 15) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
@@ -33,7 +33,7 @@ DIM SHARED warning(1 TO 30) AS object
 DIM idSet AS _BYTE
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
-DIM endMarker AS INTEGER, packet$, info$
+DIM key$, value$
 
 vgaPalette:
 DATA 0,0,170
@@ -206,24 +206,16 @@ DO
                     _CONTINUE
                 END IF
 
-                GET #player(i).handle, , incoming$
-                playerStream(i) = playerStream(i) + incoming$
-                endMarker = INSTR(playerStream(i), "<END>")
-                DO WHILE endMarker > 0
-                    packet$ = LEFT$(playerStream(i), endMarker - 1)
-                    playerStream(i) = MID$(playerStream(i), endMarker + 5)
-                    endMarker = INSTR(packet$, ">")
-                    info$ = MID$(packet$, endMarker + 1)
-                    packet$ = LEFT$(packet$, endMarker - 1)
+                getData player(i), playerStream(i)
 
-                    endMarker = INSTR(playerStream(i), "<END>")
+                DO WHILE parse(playerStream(i), key$, value$)
                     player(i).ping = TIMER
-                    SELECT CASE packet$
+                    SELECT CASE key$
                         CASE "NAME"
-                            player(i).name = info$
+                            player(i).name = value$
                         CASE "COLOR" 'received once per player
                             DIM newcolor AS INTEGER, changed AS _BYTE
-                            newcolor = CVI(info$)
+                            newcolor = CVI(value$)
                             changed = False
                             'check if this color is already in use, so a random one can be assigned
                             FOR j = 1 TO UBOUND(player)
@@ -239,8 +231,8 @@ DO
                                 sendData player(i), "COLOR", MKI$(newcolor)
                             END IF
                         CASE "POS"
-                            player(i).x = CVI(LEFT$(info$, 2))
-                            player(i).y = CVI(RIGHT$(info$, 2))
+                            player(i).x = CVI(LEFT$(value$, 2))
+                            player(i).y = CVI(RIGHT$(value$, 2))
                     END SELECT
                 LOOP
 
@@ -271,42 +263,32 @@ DO
                 sendData server, "POS", MKI$(player(me).x) + MKI$(player(me).y)
             END IF
 
-            GET #server.handle, , incoming$
-            serverStream = serverStream + incoming$
-            endMarker = INSTR(serverStream, "<END>")
-            DO WHILE endMarker > 0
-                packet$ = LEFT$(serverStream, endMarker - 1)
-                serverStream = MID$(serverStream, endMarker + 5)
-                endMarker = INSTR(packet$, ">")
-                info$ = MID$(packet$, endMarker + 1)
-                packet$ = LEFT$(packet$, endMarker - 1)
-
-                endMarker = INSTR(serverStream, "<END>")
-
-                SELECT CASE packet$
+            getData server, serverStream
+            DO WHILE parse(serverStream, key$, value$)
+                SELECT CASE key$
                     CASE "ID" 'first info sent by server
                         idSet = True
-                        me = CVI(info$)
+                        me = CVI(value$)
                         player(me).name = userName$
                         player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
                         player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
                         player(me).state = True
                         player(me).color = 1
                     CASE "COLOR" 'server color changes must always be applied
-                        player(me).color = CVI(info$)
+                        player(me).color = CVI(value$)
                     CASE "PLAYERCOLOR"
-                        player(CVI(LEFT$(info$, 2))).color = CVI(RIGHT$(info$, 2))
+                        player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
                     CASE "PLAYERPOS"
-                        player(CVI(LEFT$(info$, 2))).state = True
-                        player(CVI(LEFT$(info$, 2))).ping = TIMER
-                        player(CVI(LEFT$(info$, 2))).x = CVS(MID$(info$, 3, 4))
-                        player(CVI(LEFT$(info$, 2))).y = CVS(RIGHT$(info$, 4))
+                        player(CVI(LEFT$(value$, 2))).state = True
+                        player(CVI(LEFT$(value$, 2))).ping = TIMER
+                        player(CVI(LEFT$(value$, 2))).x = CVS(MID$(value$, 3, 4))
+                        player(CVI(LEFT$(value$, 2))).y = CVS(RIGHT$(value$, 4))
                     CASE "PLAYERNAME"
-                        player(CVI(LEFT$(info$, 2))).name = MID$(info$, 3)
+                        player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
                     CASE "PLAYEROFFLINE"
-                        IF player(CVI(info$)).state = True THEN
-                            player(CVI(info$)).state = False
-                            addWarning player(CVI(info$)).name + " left the game."
+                        IF player(CVI(value$)).state = True THEN
+                            player(CVI(value$)).state = False
+                            addWarning player(CVI(value$)).name + " left the game."
                         END IF
                     CASE "PING"
                         DIM serverPing AS SINGLE
@@ -396,11 +378,30 @@ SUB addWarning (text$)
     NEXT
 END SUB
 
-SUB sendData (client AS object, id$, info$)
-    DIM packet$
-    packet$ = id$ + ">" + info$ + "<END>"
-    PUT #client.handle, , packet$
+SUB sendData (client AS object, id$, value$)
+    DIM key$
+    key$ = id$ + ">" + value$ + "<END>"
+    PUT #client.handle, , key$
 END SUB
+
+SUB getData (client AS object, buffer AS STRING)
+    DIM incoming$
+    GET #client.handle, , incoming$
+    buffer = buffer + incoming$
+END SUB
+
+FUNCTION parse%% (buffer AS STRING, key$, value$)
+    DIM endMarker AS LONG
+    endMarker = INSTR(buffer, "<END>")
+    IF endMarker THEN
+        key$ = LEFT$(buffer, endMarker - 1)
+        buffer = MID$(buffer, endMarker + 5)
+        endMarker = INSTR(key$, ">")
+        value$ = MID$(key$, endMarker + 1)
+        key$ = LEFT$(key$, endMarker - 1)
+        parse%% = True
+    END IF
+END FUNCTION
 
 SUB adjustCamera
     IF player(me).x + camera.x > _WIDTH / 2 + cameraWindow THEN
