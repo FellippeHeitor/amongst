@@ -35,6 +35,9 @@ DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
 DIM key$, value$
 
+DIM SHARED endSignal AS STRING
+endSignal = "<" + CHR$(254) + ">"
+
 vgaPalette:
 DATA 0,0,170
 DATA 0,170,0
@@ -380,7 +383,7 @@ END SUB
 
 SUB sendData (client AS object, id$, value$)
     DIM key$
-    key$ = id$ + ">" + value$ + "<END>"
+    key$ = id$ + ">" + value$ + endSignal
     PUT #client.handle, , key$
 END SUB
 
@@ -392,10 +395,10 @@ END SUB
 
 FUNCTION parse%% (buffer AS STRING, key$, value$)
     DIM endMarker AS LONG
-    endMarker = INSTR(buffer, "<END>")
+    endMarker = INSTR(buffer, endSignal)
     IF endMarker THEN
         key$ = LEFT$(buffer, endMarker - 1)
-        buffer = MID$(buffer, endMarker + 5)
+        buffer = MID$(buffer, endMarker + LEN(endSignal))
         endMarker = INSTR(key$, ">")
         value$ = MID$(key$, endMarker + 1)
         key$ = LEFT$(key$, endMarker - 1)
