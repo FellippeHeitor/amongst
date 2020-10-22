@@ -79,7 +79,7 @@ FOR i = 1 TO 15
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
 
-CONST timeout = 10
+CONST timeout = 30
 DIM userName$, userColor%
 IF _FILEEXISTS("amongus.dat") THEN
     OPEN "amongus.dat" FOR BINARY AS #1

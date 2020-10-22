@@ -40,7 +40,7 @@ DIM key$, value$
 DIM SHARED endSignal AS STRING
 endSignal = "<" + CHR$(254) + ">"
 
-CONST timeout = 10
+CONST timeout = 30
 
 DIM SHARED host AS LONG
 PRINT "Starting server... ";
