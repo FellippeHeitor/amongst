@@ -1,5 +1,8 @@
 OPTION _EXPLICIT
 
+DIM SHARED gameVersion AS INTEGER
+gameVersion = 1
+
 $LET DEBUGGING = FALSE
 $IF DEBUGGING = TRUE THEN
     $CONSOLE
@@ -16,10 +19,13 @@ TYPE object
     name AS STRING
     handle AS LONG
     x AS SINGLE
+    prevX AS SINGLE
     y AS SINGLE
+    prevY AS SINGLE
     state AS INTEGER
     color AS INTEGER
     basicInfoSent AS _BYTE
+    broadcastOffline AS _BYTE
     ping AS SINGLE
 END TYPE
 
@@ -30,10 +36,20 @@ DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
 DIM SHARED colors(1 TO 15) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
 DIM SHARED warning(1 TO 30) AS object
+DIM SHARED chat(1 TO 50) AS STRING
 DIM idSet AS _BYTE
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
+DIM serverPing AS SINGLE
+DIM dataReceived(10) AS _BYTE
 DIM key$, value$
+DIM choice AS STRING
+
+DIM serverList(1 TO 3) AS STRING, chosenServer$
+i = 0
+i = i + 1: serverList(i) = "localhost Local host"
+i = i + 1: serverList(i) = "spriggsyspriggs.ddns.net North America"
+i = i + 1: serverList(i) = "alephc.xyz Australia"
 
 DIM SHARED endSignal AS STRING
 endSignal = "<" + CHR$(254) + ">"
@@ -61,27 +77,36 @@ FOR i = 1 TO 15
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
 
-CONST timeout = 1
+CONST timeout = 10
 DIM userName$, userColor%
-INPUT "Name: ", userName$
-DO
-    INPUT "Color (1-15): ", userColor%
-LOOP WHILE userColor% < 1 OR userColor% > 15
+IF _FILEEXISTS(COMMAND$) THEN
+    OPEN COMMAND$ FOR BINARY AS #1
+    GET #1, , i
+    userName$ = SPACE$(i)
+    GET #1, , userName$
+    GET #1, , userColor%
+    GET #1, , i
+    IF i = 1 THEN choice = "1": GOTO clientTemp ELSE GOTO hostTemp
+    CLOSE #1
+ELSE
+    INPUT "Name: ", userName$
+    userName$ = LEFT$(userName$, 20)
+    DO
+        INPUT "Color (1-15): ", userColor%
+    LOOP WHILE userColor% < 1 OR userColor% > 15
+END IF
 
 DO
     COLOR 15
     PRINT "-------------------------"
     PRINT "(1) Free play"
-    PRINT "(2) Host game locally"
-    PRINT "(3) Connect to local host"
-    PRINT "(4) Host game online"
-    PRINT "(5) Find game online"
+    PRINT "(2) Host game"
+    PRINT "(3) Connect to server"
 
-    DIM choice AS STRING
     DO
         choice = INKEY$
         _LIMIT 30
-    LOOP UNTIL choice >= "1" AND choice <= "5"
+    LOOP UNTIL choice >= "1" AND choice <= "3"
 
     DIM SHARED server AS object, host AS LONG
     DIM c AS INTEGER, attempt AS INTEGER
@@ -89,8 +114,9 @@ DO
         CASE 1
             EXIT DO
         CASE 2
+            hostTemp:
             COLOR 7
-            PRINT "Attempting to become a local host... ";
+            PRINT "Attempting to become a host... ";
             r = CSRLIN: c = POS(1)
             CONST maxAttempts = 100
             attempt = 0
@@ -104,24 +130,37 @@ DO
             LOOP WHILE attempt < 100
             IF host THEN mode = mode_localhost: EXIT DO
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
-            PRINT "Failed to become a local host."
+            PRINT "Failed to become a host."
             CLOSE host
         CASE 3
             COLOR 7
-            PRINT "Attempting to connect to local host... ";
+            PRINT "Attempting to connect to a server... ";
             r = CSRLIN: c = POS(1)
+
+            PRINT "Choose a server: "
+            FOR i = 1 TO UBOUND(serverList)
+                PRINT i; " " + MID$(serverList(i), INSTR(serverList(i), " ") + 1)
+            NEXT
+            DO
+                choice = INKEY$
+                _LIMIT 30
+            LOOP UNTIL VAL(choice) >= 1 AND VAL(choice) <= UBOUND(serverList)
+            clientTemp:
+            chosenServer$ = LEFT$(serverList(VAL(choice)), INSTR(serverList(VAL(choice)), " ") - 1)
+
+
             attempt = 0
             DO
                 server.handle = 0
-                server.handle = _OPENCLIENT("TCP/IP:51512:localhost")
+                server.handle = _OPENCLIENT("TCP/IP:51512:" + chosenServer$)
                 IF server.handle THEN EXIT DO
                 attempt = attempt + 1
                 LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
                 _LIMIT 30
             LOOP WHILE attempt < 100
-            IF server.handle THEN mode = mode_localclient: EXIT DO
+            IF server.handle THEN serverPing = TIMER: mode = mode_localclient: EXIT DO
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
-            PRINT "Failed to connect to local host."
+            PRINT "Failed to connect to server."
             CLOSE server.handle
         CASE 4
         CASE 5
@@ -177,6 +216,7 @@ DO
             IF idSet = False THEN
                 idSet = True
                 me = 1
+                totalClients = totalClients + 1
                 player(me).name = userName$
                 player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
                 player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
@@ -194,6 +234,8 @@ DO
                             player(i).color = 0
                             player(i).handle = newClient
                             player(i).state = True
+                            player(i).broadcastOffline = False
+                            sendData player(i), "VERSION", MKI$(gameVersion)
                             sendData player(i), "ID", MKI$(i)
                             player(i).ping = TIMER
                             EXIT FOR
@@ -203,7 +245,14 @@ DO
             END IF
 
             FOR i = 1 TO UBOUND(player)
-                IF player(i).state = False OR i = me THEN _CONTINUE
+                IF player(i).state = False THEN _CONTINUE
+
+                FOR j = 1 TO UBOUND(dataReceived)
+                    dataReceived(j) = False
+                NEXT
+
+                IF i = me THEN player(i).ping = TIMER
+
                 IF TIMER - player(i).ping > timeout THEN
                     'player inactive
                     player(i).state = False
@@ -213,14 +262,32 @@ DO
                     _CONTINUE
                 END IF
 
-                getData player(i), playerStream(i)
+                IF i = me THEN
+                    IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
+                        player(me).prevX = player(me).x
+                        player(me).prevY = player(me).y
+                        playerStream(i) = "PING>" + endSignal + "PLAYERPOS>" + MKI$(player(me).x) + MKI$(player(me).y) + endSignal
+                    END IF
+                ELSE
+                    getData player(i), playerStream(i)
+                END IF
 
                 DO WHILE parse(playerStream(i), key$, value$)
-                    player(i).ping = TIMER
                     SELECT CASE key$
                         CASE "NAME"
+                            dataReceived(1) = True
                             player(i).name = value$
+                            attempt = 1
+                            FOR j = 1 TO UBOUND(player)
+                                IF j = i THEN _CONTINUE
+                                IF player(j).name = value$ THEN attempt = attempt + 1
+                            NEXT
+                            IF attempt THEN
+                                player(i).name = player(i).name + STR$(attempt)
+                                sendData player(i), "NAME", player(i).name
+                            END IF
                         CASE "COLOR" 'received once per player
+                            dataReceived(2) = True
                             DIM newcolor AS INTEGER, changed AS _BYTE
                             newcolor = CVI(value$)
                             changed = False
@@ -237,24 +304,31 @@ DO
                             IF changed THEN
                                 sendData player(i), "COLOR", MKI$(newcolor)
                             END IF
-                        CASE "POS"
+                        CASE "PLAYERPOS"
+                            dataReceived(3) = True
                             player(i).x = CVI(LEFT$(value$, 2))
                             player(i).y = CVI(RIGHT$(value$, 2))
+                        CASE "PING"
+                            player(i).ping = TIMER
                     END SELECT
                 LOOP
 
                 'send ping
-                sendData player(i), "PING", ""
+                IF i <> me THEN
+                    sendData player(i), "PING", ""
+                END IF
 
-                'send all players' data
+                'send this player's data to everybody else
                 FOR j = 1 TO UBOUND(player)
-                    IF j = i THEN _CONTINUE
                     IF player(j).state = True THEN
-                        sendData player(i), "PLAYERCOLOR", MKI$(j) + MKI$(player(j).color)
-                        sendData player(i), "PLAYERPOS", MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
-                        sendData player(i), "PLAYERNAME", MKI$(j) + player(j).name
+                        IF dataReceived(1) THEN sendData player(i), "PLAYERNAME", MKI$(j) + player(j).name
+                        IF dataReceived(2) THEN sendData player(i), "PLAYERCOLOR", MKI$(j) + MKI$(player(j).color)
+                        IF dataReceived(3) THEN sendData player(i), "PLAYERPOS", MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
                     ELSE
-                        sendData player(i), "PLAYEROFFLINE", MKI$(j)
+                        IF player(i).broadcastOffline = False THEN
+                            player(i).broadcastOffline = True
+                            sendData player(i), "PLAYEROFFLINE", MKI$(j)
+                        END IF
                     END IF
                 NEXT
             NEXT
@@ -267,13 +341,36 @@ DO
                     sendData server, "NAME", player(me).name
                 END IF
 
-                sendData server, "POS", MKI$(player(me).x) + MKI$(player(me).y)
+                IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
+                    player(me).prevX = player(me).x
+                    player(me).prevY = player(me).y
+                    sendData server, "PLAYERPOS", MKI$(player(me).x) + MKI$(player(me).y)
+                END IF
+            ELSE
+                DIM gameVersionChecked AS _BYTE
+                gameVersionChecked = False
             END IF
+
+            sendData server, "PING", ""
 
             getData server, serverStream
             DO WHILE parse(serverStream, key$, value$)
                 SELECT CASE key$
-                    CASE "ID" 'first info sent by server
+                    CASE "VERSION" 'first piece of data sent by server
+                        IF CVI(value$) <> gameVersion THEN
+                            SCREEN 0
+                            PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
+                            PRINT "Server version incompatible."
+                            END
+                        END IF
+                        gameVersionChecked = True
+                    CASE "ID" 'second piece of data sent by server
+                        IF gameVersionChecked = False THEN
+                            SCREEN 0
+                            PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
+                            PRINT "Server version incompatible."
+                            END
+                        END IF
                         idSet = True
                         me = CVI(value$)
                         player(me).name = userName$
@@ -283,11 +380,12 @@ DO
                         player(me).color = userColor%
                     CASE "COLOR" 'server color changes must always be applied
                         player(me).color = CVI(value$)
+                    CASE "NAME" 'server name changes must always be applied
+                        player(me).name = value$
                     CASE "PLAYERCOLOR"
                         player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
                     CASE "PLAYERPOS"
                         player(CVI(LEFT$(value$, 2))).state = True
-                        player(CVI(LEFT$(value$, 2))).ping = TIMER
                         player(CVI(LEFT$(value$, 2))).x = CVS(MID$(value$, 3, 4))
                         player(CVI(LEFT$(value$, 2))).y = CVS(RIGHT$(value$, 4))
                     CASE "PLAYERNAME"
@@ -298,7 +396,6 @@ DO
                             addWarning player(CVI(value$)).name + " left the game."
                         END IF
                     CASE "PING"
-                        DIM serverPing AS SINGLE
                         serverPing = TIMER
                 END SELECT
             LOOP
@@ -339,7 +436,20 @@ DO
             PRINT "Disconnected from host."
             END
         ELSE
-            PRINT USING "###ms"; ((TIMER - serverPing) - FIX(TIMER - serverPing)) * 1000;
+            COLOR _RGB32(255)
+            DIM pcount AS INTEGER, p AS SINGLE, m$, lastPingUpdate AS SINGLE
+            IF TIMER - lastPingUpdate >= 1 THEN
+                p = TIMER - serverPing / pcount
+                pcount = 0
+                lastPingUpdate = TIMER
+                m$ = LTRIM$(STR$(p))
+                m$ = MID$(m$, INSTR(m$, ".") + 1)
+                m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"
+            ELSE
+                pcount = pcount + 1
+                p = p + (TIMER - serverPing)
+            END IF
+            _PRINTSTRING (_WIDTH - 50 - _PRINTWIDTH(m$), 0), m$
         END IF
     END IF
 
@@ -360,10 +470,12 @@ DO
 
     'display warnings
     FOR i = 1 TO UBOUND(warning)
-        COLOR _RGB32(128, 50, 22)
         IF warning(i).state = True THEN
+            COLOR _RGB32(0)
+            _PRINTSTRING (11, 1 + _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
+            COLOR _RGB32(238, 50, 22)
             _PRINTSTRING (10, _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
-            IF TIMER - warning(i).ping > 2 THEN warning(i).state = False
+            IF TIMER - warning(i).ping > 2.5 THEN warning(i).state = False
         END IF
     NEXT
 
@@ -388,7 +500,7 @@ END SUB
 SUB sendData (client AS object, id$, value$)
     DIM key$
     key$ = id$ + ">" + value$ + endSignal
-    PUT #client.handle, , key$
+    IF client.handle THEN PUT #client.handle, , key$
 END SUB
 
 SUB getData (client AS object, buffer AS STRING)
