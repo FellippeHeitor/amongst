@@ -390,7 +390,7 @@ DO
         COLOR _RGB32(0)
         FOR i = 1 TO UBOUND(chat)
             IF chat(i).id THEN
-                y = 60 + _FONTHEIGHT * ((i - 1) * 2)
+                y = 65 + _FONTHEIGHT * ((i - 1) * 2)
                 LINE (55, y - 10)-(_WIDTH - 55, y + 18), _RGB32(255, 100), BF
                 _FONT 8
                 x = 60
@@ -429,9 +429,9 @@ DO
         END SELECT
 
         COLOR _RGB32(0)
-        _PRINTSTRING (61, 61 + _FONTHEIGHT * (i * 2) - 8), "> " + myMessage$ + "_"
+        _PRINTSTRING (61, 61 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + "_"
         COLOR _RGB32(255)
-        _PRINTSTRING (60, 60 + _FONTHEIGHT * (i * 2) - 8), "> " + myMessage$ + "_"
+        _PRINTSTRING (60, 60 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + "_"
         _FONT 8
     END IF
 
