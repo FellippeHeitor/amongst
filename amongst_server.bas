@@ -43,7 +43,7 @@ endSignal = "<" + CHR$(254) + ">"
 CONST timeout = 30
 
 DIM SHARED host AS LONG
-PRINT "Starting server... ";
+PRINT "Starting server (ver. "; _TRIM$(STR$(gameVersion)); ")... ";
 host = _OPENHOST("TCP/IP:51512")
 IF host = 0 THEN
     PRINT "Cannot listen on port 51512"
