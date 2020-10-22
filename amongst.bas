@@ -303,6 +303,15 @@ DO
             PRINT "Disconnected from host."
             END
         ELSE
+            DIM k AS LONG
+            k = _KEYHIT
+
+            IF k = 27 THEN
+                IF chatOpen THEN
+                    chatOpen = False
+                END IF
+            END IF
+
             exitSign = _EXIT
             IF exitSign THEN
                 sendData server, "PLAYERQUIT", MKI$(me)
@@ -386,6 +395,8 @@ DO
                 _FONT 8
                 x = 60
                 IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(player(chat(i).id).name)
+                COLOR _RGB32(100)
+                _PRINTSTRING (1 + x, 1 + y - 8), player(chat(i).id).name
                 COLOR colors(player(chat(i).id).color)
                 _PRINTSTRING (x, y - 8), player(chat(i).id).name
                 _FONT 16
@@ -415,8 +426,6 @@ DO
                     sendData server, "CHAT", myMessage$
                     myMessage$ = ""
                 END IF
-            CASE CHR$(27)
-                chatOpen = False
         END SELECT
 
         COLOR _RGB32(0)
@@ -468,7 +477,7 @@ DO
 
     _DISPLAY
     _LIMIT 60
-LOOP UNTIL _KEYHIT = 27
+LOOP
 CLOSE
 SYSTEM
 
