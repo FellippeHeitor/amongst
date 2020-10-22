@@ -227,21 +227,7 @@ DO
             getData server, serverStream
             DO WHILE parse(serverStream, key$, value$)
                 SELECT EVERYCASE key$
-                    CASE "VERSION" 'first piece of data sent by server
-                        IF CVI(value$) <> gameVersion THEN
-                            SCREEN 0
-                            PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
-                            PRINT "Server version incompatible."
-                            END
-                        END IF
-                        gameVersionChecked = True
-                    CASE "ID" 'second piece of data sent by server
-                        IF gameVersionChecked = False THEN
-                            SCREEN 0
-                            PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
-                            PRINT "Server version incompatible."
-                            END
-                        END IF
+                    CASE "ID" 'first piece of data sent by server
                         idSet = True
                         me = CVI(value$)
                         player(me).name = userName$

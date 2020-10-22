@@ -64,7 +64,6 @@ DO
                     player(i).handle = newClient
                     player(i).state = True
                     player(i).broadcastOffline = False
-                    sendData player(i), "VERSION", MKI$(gameVersion)
                     sendData player(i), "ID", MKI$(i)
 
                     'send existing players' data:
