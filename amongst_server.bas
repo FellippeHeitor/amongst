@@ -173,15 +173,14 @@ DO
                     DIM chatMessage$
                     player(i).hasNewMessage = True
                     chatMessage$ = value$
+                CASE "PING"
+                    sendData player(i), "PONG", ""
             END SELECT
         LOOP
 
         IF player(i).state = False THEN
             _CONTINUE
         ELSE
-            'send ping
-            sendData player(i), "PING", ""
-
             'send this player's data to everybody else
             FOR j = 1 TO UBOUND(player)
                 IF j = i THEN _CONTINUE
