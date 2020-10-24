@@ -35,12 +35,11 @@ DIM SHARED totalClients AS INTEGER
 DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
 DIM SHARED playerStream(1 TO 10) AS STRING
-DIM SHARED colors(1 TO 15) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
+DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
 DIM SHARED warning(1 TO 30) AS object
 DIM SHARED chat(1 TO 14) AS object, hasUnreadMessages AS _BYTE, chatOpen AS _BYTE
 DIM idSet AS _BYTE
 DIM shipMovement AS _BYTE
-DIM gameVersionChecked AS _BYTE
 DIM i AS LONG
 DIM serverPing AS SINGLE, currentPing AS SINGLE, waitingForPong AS _BYTE
 DIM key$, value$
@@ -59,24 +58,21 @@ DIM SHARED endSignal AS STRING
 endSignal = "<" + CHR$(254) + ">"
 
 vgaPalette:
-DATA 0,0,170
-DATA 0,170,0
-DATA 0,170,170
-DATA 170,0,0
-DATA 170,0,170
-DATA 170,85,0
-DATA 170,170,170
-DATA 85,85,85
-DATA 85,85,255
-DATA 85,255,85
-DATA 85,255,255
-DATA 255,85,85
-DATA 255,85,255
-DATA 255,255,85
-DATA 255,255,255
+DATA 195,17,16
+DATA 14,51,196
+DATA 18,125,46
+DATA 236,84,187
+DATA 239,125,17
+DATA 248,245,91
+DATA 62,71,77
+DATA 216,225,241
+DATA 107,48,187
+DATA 112,73,28
+DATA 93,250,220
+DATA 79,240,58
 
 RESTORE vgaPalette
-FOR i = 1 TO 15
+FOR i = 1 TO UBOUND(colors)
     READ r%, g%, b%
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
@@ -96,10 +92,12 @@ ELSE
     INPUT "Name: ", userName$
     userName$ = LEFT$(userName$, 20)
     DO
-        INPUT "Color (1-15): ", userColor%
-    LOOP WHILE userColor% < 1 OR userColor% > 15
+        PRINT "Color (1-"; LTRIM$(STR$(UBOUND(colors))); "): ";
+        INPUT "", userColor%
+    LOOP WHILE userColor% < 1 OR userColor% > UBOUND(colors)
 END IF
 
+start:
 DO
     COLOR 15
     PRINT "-------------------------"
@@ -144,7 +142,6 @@ DO
             IF server.handle THEN mode = mode_onlineclient: EXIT DO
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
             PRINT "Failed to connect to server."
-            CLOSE server.handle
     END SELECT
 LOOP
 
@@ -209,22 +206,6 @@ END IF
 DO
     SELECT CASE mode
         CASE mode_onlineclient
-            IF idSet THEN
-                IF player(me).basicInfoSent = False THEN
-                    player(me).basicInfoSent = True
-                    sendData server, "COLOR", MKI$(player(me).color)
-                    sendData server, "NAME", player(me).name
-                END IF
-
-                IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
-                    player(me).prevX = player(me).x
-                    player(me).prevY = player(me).y
-                    sendData server, "PLAYERPOS", MKS$(player(me).x) + MKS$(player(me).y)
-                END IF
-            ELSE
-                gameVersionChecked = False
-            END IF
-
             IF waitingForPong = False THEN
                 serverPing = TIMER
                 sendData server, "PING", ""
@@ -234,7 +215,12 @@ DO
             getData server, serverStream
             DO WHILE parse(serverStream, key$, value$)
                 SELECT EVERYCASE key$
-                    CASE "ID" 'first piece of data sent by server
+                    CASE "SERVERFULL"
+                        SCREEN 0
+                        COLOR 14: PRINT "/\ ";: COLOR 12
+                        PRINT "Server full."
+                        GOTO start
+                    CASE "ID" 'first piece of data sent by server if not full
                         idSet = True
                         me = CVI(value$)
                         player(me).name = userName$
@@ -267,6 +253,20 @@ DO
                         currentPing = TIMER - serverPing
                 END SELECT
             LOOP
+
+            IF idSet THEN
+                IF player(me).basicInfoSent = False THEN
+                    player(me).basicInfoSent = True
+                    sendData server, "COLOR", MKI$(player(me).color)
+                    sendData server, "NAME", player(me).name
+                END IF
+
+                IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
+                    player(me).prevX = player(me).x
+                    player(me).prevY = player(me).y
+                    sendData server, "PLAYERPOS", MKS$(player(me).x) + MKS$(player(me).y)
+                END IF
+            END IF
 
             totalClients = 0
             FOR i = 1 TO UBOUND(player)

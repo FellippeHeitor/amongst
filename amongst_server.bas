@@ -32,7 +32,7 @@ END TYPE
 DIM SHARED totalClients AS INTEGER
 DIM SHARED playerStream(1 TO 10) AS STRING
 DIM SHARED player(1 TO 10) AS object
-DIM SHARED colors(1 TO 15) AS _UNSIGNED LONG
+DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
 DIM key$, value$
@@ -52,10 +52,10 @@ END IF
 PRINT "Listening on port 51512"
 
 DO
-    IF totalClients < UBOUND(player) THEN
-        newClient = 0
-        newClient = _OPENCONNECTION(host)
-        IF newClient THEN
+    newClient = 0
+    newClient = _OPENCONNECTION(host)
+    IF newClient THEN
+        IF totalClients < UBOUND(player) THEN
             totalClients = totalClients + 1
             FOR i = 1 TO UBOUND(player)
                 IF player(i).state = False THEN
@@ -84,6 +84,11 @@ DO
                 END IF
             NEXT
             PRINT "User at " + _CONNECTIONADDRESS$(newClient) + " connected as client #" + LTRIM$(STR$(i))
+        ELSE
+            key$ = "SERVERFULL>" + endSignal
+            PUT #newClient, , key$
+            PRINT "Connection from " + _CONNECTIONADDRESS$(newClient) + " refused (server full)"
+            CLOSE newClient
         END IF
     END IF
 
