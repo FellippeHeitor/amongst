@@ -37,7 +37,7 @@ IF _FILEEXISTS(remoteFile$) THEN
     CLOSE #1
 
     KILL remoteFile$
-    SHELL _HIDE "chmod +x " + CHR$(34) + COMMAND$ + CHR$(34)
+    IF INSTR(_OS$, "LINUX") THEN SHELL _HIDE "chmod +x " + CHR$(34) + COMMAND$ + CHR$(34)
     SHELL _DONTWAIT CHR$(34) + COMMAND$ + CHR$(34)
     PRINT "Update successful."
     SYSTEM

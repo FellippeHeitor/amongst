@@ -126,7 +126,10 @@ mainWindow = _NEWIMAGE(windowWidth, windowHeight, 32)
 mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
 _DEST mapImage
 RANDOMIZE 6
-FOR i = 1 TO 50
+FOR i = 1 TO 500
+    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 2, _RGB32(255, 80)
+NEXT
+FOR i = 1 TO 10
     CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
 NEXT
 _DEST 0
@@ -218,6 +221,12 @@ DO
                 IF server.handle THEN EXIT DO
                 attempt = attempt + 1
                 LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
+
+                exitSign = _EXIT
+                IF exitSign THEN
+                    SYSTEM
+                END IF
+
                 _LIMIT 30
             LOOP WHILE attempt < maxAttempts
             IF server.handle THEN
@@ -305,15 +314,15 @@ END IF
 DO
     CLS
 
-    DIM shipFlotation AS SINGLE, shipFloatIntensity AS SINGLE
+    DIM shipFlotation AS SINGLE, shipFloatAmplitude AS SINGLE
     IF shipMovement THEN
         shipFlotation = shipFlotation + .05
         IF shipFlotation > _PI(2) THEN shipFlotation = shipFlotation - _PI(2)
-        shipFloatIntensity = 1.5
+        shipFloatAmplitude = 1.5
     END IF
 
     _DONTBLEND
-    _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatIntensity, camera.y + SIN(shipFlotation) * shipFloatIntensity), mapImage
+    _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatAmplitude, camera.y + SIN(shipFlotation) * shipFloatAmplitude), mapImage
     _BLEND
 
     SELECT CASE mode
@@ -464,8 +473,8 @@ DO
         targetAnimation = targetAnimation - .1
         IF targetAnimation < 0 THEN targetAnimation = 5
 
-        x = player(target).x + camera.x + COS(shipFlotation) * shipFloatIntensity
-        y = player(target).y + camera.y + SIN(shipFlotation) * shipFloatIntensity
+        x = player(target).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+        y = player(target).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
         CircleFill x, y, player(target).size + 10 + targetAnimation, _RGB32(255, 0, 0, 100)
     END IF
 
@@ -478,8 +487,8 @@ DO
         '    playerStream(i) = MID$(playerStream(i), 9)
         'END IF
 
-        x = player(i).x + camera.x + COS(shipFlotation) * shipFloatIntensity
-        y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatIntensity
+        x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+        y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
         CircleFill x, y + 6, player(i).size + 5, _RGB32(0, 50)
         CircleFill x, y, player(i).size + 5, _RGB32(0)
         CircleFill x, y, player(i).size, colors(player(i).color)
