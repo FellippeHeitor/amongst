@@ -202,7 +202,8 @@ DO
                         NEXT
                     END IF
                 CASE id_POS
-                    player(i).hasNewPosition = player(i).hasNewPosition + value$
+                    'player(i).hasNewPosition = player(i).hasNewPosition + value$
+                    player(i).hasNewPosition = value$
                     player(i).x = CVS(LEFT$(value$, 4))
                     player(i).y = CVS(RIGHT$(value$, 4))
                 CASE id_SIZE
@@ -328,7 +329,7 @@ DO
         END SELECT
     END IF
 
-    _LIMIT 120
+    _LIMIT 60
 LOOP
 
 SUB sendData (client AS object, id AS INTEGER, value$)

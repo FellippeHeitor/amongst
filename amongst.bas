@@ -364,9 +364,7 @@ DO
                         hasUnreadMessages = True
                     CASE id_SHOOT
                         target = CVI(RIGHT$(value$, 2))
-                        addParticles player(target).x, player(target).y, 50, _RGB32(0)
-                        addParticles player(target).x, player(target).y, 50, _RGB32(255)
-                        addParticles player(target).x, player(target).y, 50, colors(player(target).color)
+                        addParticles player(target).x, player(target).y, 150, colors(player(target).color)
                         thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
                     CASE id_PLAYERONLINE
                         player(CVI(value$)).state = True
@@ -505,9 +503,7 @@ DO
                 lastShot = TIMER
                 score = score + 100
                 sendData server, id_SHOOT, MKI$(target)
-                addParticles player(target).x, player(target).y, 50, _RGB32(0)
-                addParticles player(target).x, player(target).y, 50, _RGB32(255)
-                addParticles player(target).x, player(target).y, 50, colors(player(target).color)
+                addParticles player(target).x, player(target).y, 150, colors(player(target).color)
                 thickLine player(me).x + camera.x, player(me).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
             END IF
         END IF
@@ -838,9 +834,9 @@ SUB addParticles (x AS SINGLE, y AS SINGLE, total AS INTEGER, c AS _UNSIGNED LON
         a = RND * _PI(2)
         particle(p).xv = COS(a) * (RND * 10)
         particle(p).yv = SIN(a) * (RND * 10)
-        particle(p).r = _RED32(c)
-        particle(p).g = _GREEN32(c)
-        particle(p).b = _BLUE32(c)
+        particle(p).r = _RED32(c) + (10 - (RND * 20))
+        particle(p).g = _GREEN32(c) + (10 - (RND * 20))
+        particle(p).b = _BLUE32(c) + (10 - (RND * 20))
         particle(p).size = _CEIL(RND * 3)
         particle(p).start = TIMER
         particle(p).duration = RND
