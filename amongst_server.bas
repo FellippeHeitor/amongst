@@ -1,7 +1,9 @@
 OPTION _EXPLICIT
 
 DIM SHARED gameVersion AS INTEGER
-gameVersion = 1
+'this is to be increased everytime the client
+'becomes incompatible with previous versions
+gameVersion = 2
 
 $LET DEBUGGING = FALSE
 $IF DEBUGGING = TRUE THEN
@@ -12,6 +14,20 @@ $CONSOLE:ONLY
 _DEST _CONSOLE
 
 CONST True = -1, False = 0
+
+CONST id_SERVERFULL = 1
+CONST id_PING = 2
+CONST id_ID = 3
+CONST id_NEWCOLOR = 4
+CONST id_NEWNAME = 5
+CONST id_COLOR = 6
+CONST id_POS = 7
+CONST id_NAME = 8
+CONST id_CHAT = 9
+CONST id_PLAYERONLINE = 10
+CONST id_PLAYEROFFLINE = 11
+CONST id_PONG = 12
+CONST id_PLAYERQUIT = 13
 
 TYPE object
     name AS STRING
@@ -35,10 +51,10 @@ DIM SHARED player(1 TO 10) AS object
 DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
-DIM key$, value$
+DIM id AS INTEGER, value$
 
 DIM SHARED endSignal AS STRING
-endSignal = "<" + CHR$(254) + ">"
+endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
 CONST timeout = 30
 
@@ -64,18 +80,18 @@ DO
                     player(i).handle = newClient
                     player(i).state = True
                     player(i).broadcastOffline = False
-                    sendData player(i), "ID", MKI$(i)
+                    sendData player(i), id_ID, MKI$(i)
 
                     'send existing players' data:
                     FOR j = 1 TO UBOUND(player)
                         IF j = i THEN _CONTINUE
                         IF player(j).state = True THEN
-                            sendData player(j), "PLAYERONLINE", MKI$(i)
+                            sendData player(j), id_PLAYERONLINE, MKI$(i)
 
-                            sendData player(i), "PLAYERONLINE", MKI$(j)
-                            sendData player(i), "PLAYERNAME", MKI$(j) + player(j).name
-                            sendData player(i), "PLAYERCOLOR", MKI$(j) + MKI$(player(j).color)
-                            sendData player(i), "PLAYERPOS", MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
+                            sendData player(i), id_PLAYERONLINE, MKI$(j)
+                            sendData player(i), id_NAME, MKI$(j) + player(j).name
+                            sendData player(i), id_COLOR, MKI$(j) + MKI$(player(j).color)
+                            sendData player(i), id_POS, MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
                         END IF
                     NEXT
 
@@ -85,8 +101,9 @@ DO
             NEXT
             PRINT "User at " + _CONNECTIONADDRESS$(newClient) + " connected as client #" + LTRIM$(STR$(i))
         ELSE
-            key$ = "SERVERFULL>" + endSignal
-            PUT #newClient, , key$
+            DIM packet$
+            packet$ = MKI$(id_SERVERFULL) + endSignal
+            PUT #newClient, , packet$
             PRINT "Connection from " + _CONNECTIONADDRESS$(newClient) + " refused (server full)"
             CLOSE newClient
         END IF
@@ -98,7 +115,7 @@ DO
                 player(i).broadcastOffline = True
                 FOR j = 1 TO UBOUND(player)
                     IF j = i OR player(j).state = False THEN _CONTINUE
-                    sendData player(j), "PLAYEROFFLINE", MKI$(i)
+                    sendData player(j), id_PLAYEROFFLINE, MKI$(i)
                 NEXT
             END IF
             _CONTINUE
@@ -120,10 +137,10 @@ DO
 
         getData player(i), playerStream(i)
 
-        DO WHILE parse(playerStream(i), key$, value$)
+        DO WHILE parse(playerStream(i), id, value$)
             player(i).ping = TIMER
-            SELECT CASE key$
-                CASE "NAME"
+            SELECT CASE id
+                CASE id_NAME
                     player(i).hasNewName = True
                     player(i).name = value$
                     DIM attempt AS INTEGER, checkAgain AS _BYTE, m$
@@ -143,10 +160,10 @@ DO
                     LOOP WHILE checkAgain
                     IF attempt THEN
                         player(i).name = player(i).name + m$
-                        sendData player(i), "NEWNAME", player(i).name
+                        sendData player(i), id_NEWNAME, player(i).name
                     END IF
                     PRINT "Client #" + LTRIM$(STR$(i)) + " has name " + player(i).name
-                CASE "COLOR" 'received once per player
+                CASE id_COLOR 'received once per player
                     player(i).hasNewColor = True
                     DIM newcolor AS INTEGER, changed AS _BYTE
                     newcolor = CVI(value$)
@@ -162,24 +179,24 @@ DO
                     NEXT
                     player(i).color = newcolor
                     IF changed THEN
-                        sendData player(i), "NEWCOLOR", MKI$(newcolor)
+                        sendData player(i), id_NEWCOLOR, MKI$(newcolor)
                     END IF
-                CASE "PLAYERPOS"
+                CASE id_POS
                     player(i).hasNewPosition = player(i).hasNewPosition + value$
                     player(i).x = CVS(LEFT$(value$, 4))
                     player(i).y = CVS(RIGHT$(value$, 4))
-                CASE "PLAYERQUIT"
+                CASE id_PLAYERQUIT
                     player(i).state = False
                     CLOSE player(i).handle
                     totalClients = totalClients - 1
                     PRINT "Client #" + LTRIM$(STR$(i)) + " quit."
                     EXIT DO
-                CASE "CHAT"
+                CASE id_CHAT
                     DIM chatMessage$
                     player(i).hasNewMessage = True
                     chatMessage$ = value$
-                CASE "PING"
-                    sendData player(i), "PONG", ""
+                CASE id_PING
+                    sendData player(i), id_PONG, ""
             END SELECT
         LOOP
 
@@ -190,10 +207,10 @@ DO
             FOR j = 1 TO UBOUND(player)
                 IF j = i THEN _CONTINUE
                 IF player(j).state = True THEN
-                    IF player(i).hasNewName THEN sendData player(j), "PLAYERNAME", MKI$(i) + player(i).name
-                    IF player(i).hasNewColor THEN sendData player(j), "PLAYERCOLOR", MKI$(i) + MKI$(player(i).color)
-                    IF LEN(player(i).hasNewPosition) THEN sendData player(j), "PLAYERPOS", MKI$(i) + player(i).hasNewPosition
-                    IF player(i).hasNewMessage THEN sendData player(j), "PLAYERCHAT", MKI$(i) + chatMessage$
+                    IF player(i).hasNewName THEN sendData player(j), id_NAME, MKI$(i) + player(i).name
+                    IF player(i).hasNewColor THEN sendData player(j), id_COLOR, MKI$(i) + MKI$(player(i).color)
+                    IF LEN(player(i).hasNewPosition) THEN sendData player(j), id_POS, MKI$(i) + player(i).hasNewPosition
+                    IF player(i).hasNewMessage THEN sendData player(j), id_CHAT, MKI$(i) + chatMessage$
                 END IF
             NEXT
         END IF
@@ -202,9 +219,9 @@ DO
     _LIMIT 60
 LOOP
 
-SUB sendData (client AS object, id$, value$)
+SUB sendData (client AS object, id AS INTEGER, value$)
     DIM key$
-    key$ = id$ + ">" + value$ + endSignal
+    key$ = MKI$(id) + value$ + endSignal
     PUT #client.handle, , key$
 END SUB
 
@@ -214,16 +231,15 @@ SUB getData (client AS object, buffer AS STRING)
     buffer = buffer + incoming$
 END SUB
 
-FUNCTION parse%% (buffer AS STRING, key$, value$)
+FUNCTION parse%% (buffer AS STRING, id AS INTEGER, value$)
     DIM endMarker AS LONG
     endMarker = INSTR(buffer, endSignal)
     IF endMarker THEN
-        key$ = LEFT$(buffer, endMarker - 1)
+        id = CVI(LEFT$(buffer, 2))
+        value$ = MID$(buffer, 3, endMarker - 3)
         buffer = MID$(buffer, endMarker + LEN(endSignal))
-        endMarker = INSTR(key$, ">")
-        value$ = MID$(key$, endMarker + 1)
-        key$ = LEFT$(key$, endMarker - 1)
         parse%% = True
     END IF
 END FUNCTION
+
 

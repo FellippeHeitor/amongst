@@ -1,7 +1,9 @@
 OPTION _EXPLICIT
 
 DIM SHARED gameVersion AS INTEGER
-gameVersion = 1
+'this is to be increased everytime the client
+'becomes incompatible with previous versions
+gameVersion = 2
 
 $LET DEBUGGING = FALSE
 $IF DEBUGGING = TRUE THEN
@@ -11,6 +13,25 @@ $END IF
 CONST True = -1, False = 0
 CONST mode_freeplay = 0
 CONST mode_onlineclient = 1
+
+CONST id_SERVERFULL = 1
+CONST id_PING = 2
+CONST id_ID = 3
+CONST id_NEWCOLOR = 4
+CONST id_NEWNAME = 5
+CONST id_COLOR = 6
+CONST id_POS = 7
+CONST id_NAME = 8
+CONST id_CHAT = 9
+CONST id_PLAYERONLINE = 10
+CONST id_PLAYEROFFLINE = 11
+CONST id_PONG = 12
+CONST id_PLAYERQUIT = 13
+
+CONST timeout = 30
+
+CONST windowWidth = 800
+CONST windowHeight = 600
 
 TYPE object
     name AS STRING
@@ -42,7 +63,7 @@ DIM idSet AS _BYTE
 DIM shipMovement AS _BYTE
 DIM i AS LONG
 DIM serverPing AS SINGLE, currentPing AS SINGLE, waitingForPong AS _BYTE
-DIM key$, value$
+DIM id AS INTEGER, value$
 DIM choice AS STRING
 DIM exitSign AS INTEGER
 
@@ -55,7 +76,7 @@ i = i + 1: serverList(i) = "spriggsyspriggs.ddns.net North America"
 i = i + 1: serverList(i) = "alephc.xyz Australia"
 
 DIM SHARED endSignal AS STRING
-endSignal = "<" + CHR$(254) + ">"
+endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
 vgaPalette:
 DATA 195,17,16
@@ -77,7 +98,32 @@ FOR i = 1 TO UBOUND(colors)
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
 
-CONST timeout = 30
+DIM SHARED map AS LONG
+DIM SHARED messageIcon AS LONG
+
+map = _NEWIMAGE(windowWidth * 3, windowHeight * 2, 32)
+_DEST map
+RANDOMIZE 6
+FOR i = 1 TO 50
+    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
+NEXT
+_DEST 0
+
+messageIcon = _NEWIMAGE(32, 32, 32)
+_DEST messageIcon
+LINE (0, 0)-(31, 31), _RGB32(0), BF
+LINE (4, 4)-(27, 27), _RGB32(200), BF
+FOR i = 8 TO 23 STEP 5
+    LINE (5, i)-(25, i), _RGB32(0)
+NEXT
+ui(1).name = "messageicon"
+ui(1).x = windowWidth - 50
+ui(1).y = 10
+ui(1).w = _WIDTH
+ui(1).h = _HEIGHT
+_DEST 0
+
+
 DIM userName$, userColor%
 IF _FILEEXISTS("amongus.dat") THEN
     OPEN "amongus.dat" FOR BINARY AS #1
@@ -139,43 +185,40 @@ DO
                 LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
                 _LIMIT 30
             LOOP WHILE attempt < maxAttempts
-            IF server.handle THEN mode = mode_onlineclient: EXIT DO
+            IF server.handle THEN
+                mode = mode_onlineclient
+                serverStream = ""
+                EXIT DO
+            END IF
             PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
             PRINT "Failed to connect to server."
     END SELECT
 LOOP
 
-SCREEN _NEWIMAGE(800, 600, 32)
+serverPing = TIMER
+DO
+    getData server, serverStream
+    _LIMIT 30
+LOOP UNTIL LEN(serverStream) > 0 OR TIMER - serverPing > 10
+
+IF serverStream = MKI$(id_SERVERFULL) + endSignal THEN
+    PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
+    PRINT "Server full."
+    GOTO start
+ELSEIF LEN(serverStream) = 0 THEN
+    PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
+    PRINT "No response from server."
+    GOTO start
+END IF
+
+SCREEN _NEWIMAGE(windowWidth, windowHeight, 32)
 _FONT 8
 _PRINTMODE _KEEPBACKGROUND
 
 DIM SHARED playerSpeed AS SINGLE
-DIM SHARED map AS LONG
 DIM SHARED camera AS object
-DIM messageIcon AS LONG
 
-map = _NEWIMAGE(_WIDTH * 3, _HEIGHT * 2, 32)
-_DEST map
-RANDOMIZE 6
-FOR i = 1 TO 50
-    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
-NEXT
-_DEST 0
 RANDOMIZE TIMER
-
-messageIcon = _NEWIMAGE(32, 32, 32)
-_DEST messageIcon
-LINE (0, 0)-(31, 31), _RGB32(0), BF
-LINE (4, 4)-(27, 27), _RGB32(200), BF
-FOR i = 8 TO 23 STEP 5
-    LINE (5, i)-(25, i), _RGB32(0)
-NEXT
-ui(1).name = "messageicon"
-ui(1).x = _WIDTH(0) - 50
-ui(1).y = 10
-ui(1).w = _WIDTH
-ui(1).h = _HEIGHT
-_DEST 0
 
 CONST keyUP = 18432
 CONST keyDOWN = 20480
@@ -208,19 +251,14 @@ DO
         CASE mode_onlineclient
             IF waitingForPong = False THEN
                 serverPing = TIMER
-                sendData server, "PING", ""
+                sendData server, id_PING, ""
                 waitingForPong = True
             END IF
 
             getData server, serverStream
-            DO WHILE parse(serverStream, key$, value$)
-                SELECT EVERYCASE key$
-                    CASE "SERVERFULL"
-                        SCREEN 0
-                        COLOR 14: PRINT "/\ ";: COLOR 12
-                        PRINT "Server full."
-                        GOTO start
-                    CASE "ID" 'first piece of data sent by server if not full
+            DO WHILE parse(serverStream, id, value$)
+                SELECT EVERYCASE id
+                    CASE id_ID 'first piece of data sent by server if not full
                         idSet = True
                         me = CVI(value$)
                         player(me).name = userName$
@@ -228,27 +266,27 @@ DO
                         player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
                         player(me).state = True
                         player(me).color = userColor%
-                    CASE "NEWCOLOR" 'server color changes must always be applied
+                    CASE id_NEWCOLOR 'server color changes must always be applied
                         player(me).color = CVI(value$)
-                    CASE "NEWNAME" 'server name changes must always be applied
+                    CASE id_NEWNAME 'server name changes must always be applied
                         player(me).name = value$
-                    CASE "PLAYERCOLOR"
+                    CASE id_COLOR
                         player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
-                    CASE "PLAYERPOS"
+                    CASE id_POS
                         playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
-                    CASE "PLAYERNAME"
+                    CASE id_NAME
                         player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
-                    CASE "PLAYERCHAT"
+                    CASE id_CHAT
                         addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
                         hasUnreadMessages = True
-                    CASE "PLAYERONLINE"
+                    CASE id_PLAYERONLINE
                         player(CVI(value$)).state = True
-                    CASE "PLAYEROFFLINE"
+                    CASE id_PLAYEROFFLINE
                         IF player(CVI(value$)).state = True THEN
                             player(CVI(value$)).state = False
                             addWarning player(CVI(value$)).name + " left the game."
                         END IF
-                    CASE "PONG"
+                    CASE id_PONG
                         waitingForPong = False
                         currentPing = TIMER - serverPing
                 END SELECT
@@ -257,14 +295,14 @@ DO
             IF idSet THEN
                 IF player(me).basicInfoSent = False THEN
                     player(me).basicInfoSent = True
-                    sendData server, "COLOR", MKI$(player(me).color)
-                    sendData server, "NAME", player(me).name
+                    sendData server, id_COLOR, MKI$(player(me).color)
+                    sendData server, id_NAME, player(me).name
                 END IF
 
                 IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
                     player(me).prevX = player(me).x
                     player(me).prevY = player(me).y
-                    sendData server, "PLAYERPOS", MKS$(player(me).x) + MKS$(player(me).y)
+                    sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y)
                 END IF
             END IF
 
@@ -317,7 +355,7 @@ DO
 
         exitSign = _EXIT
         IF exitSign THEN
-            sendData server, "PLAYERQUIT", MKI$(me)
+            sendData server, id_PLAYERQUIT, MKI$(me)
             EXIT DO
         END IF
 
@@ -418,7 +456,7 @@ DO
                 IF LEN(myMessage$) > 0 AND TIMER - lastSentChat > messageSpeed THEN
                     lastSentChat = TIMER
                     addMessageToChat me, myMessage$
-                    sendData server, "CHAT", myMessage$
+                    sendData server, id_CHAT, myMessage$
                     myMessage$ = ""
                 ELSEIF LEN(myMessage$) > 0 AND TIMER - lastSentChat < messageSpeed THEN
                     tooFast = True
@@ -516,10 +554,10 @@ SUB addWarning (text$)
     NEXT
 END SUB
 
-SUB sendData (client AS object, id$, value$)
-    DIM key$
-    key$ = id$ + ">" + value$ + endSignal
-    IF client.handle THEN PUT #client.handle, , key$
+SUB sendData (client AS object, id AS INTEGER, value$)
+    DIM packet$
+    packet$ = MKI$(id) + value$ + endSignal
+    IF client.handle THEN PUT #client.handle, , packet$
 END SUB
 
 SUB getData (client AS object, buffer AS STRING)
@@ -528,15 +566,13 @@ SUB getData (client AS object, buffer AS STRING)
     buffer = buffer + incoming$
 END SUB
 
-FUNCTION parse%% (buffer AS STRING, key$, value$)
+FUNCTION parse%% (buffer AS STRING, id AS INTEGER, value$)
     DIM endMarker AS LONG
     endMarker = INSTR(buffer, endSignal)
     IF endMarker THEN
-        key$ = LEFT$(buffer, endMarker - 1)
+        id = CVI(LEFT$(buffer, 2))
+        value$ = MID$(buffer, 3, endMarker - 3)
         buffer = MID$(buffer, endMarker + LEN(endSignal))
-        endMarker = INSTR(key$, ">")
-        value$ = MID$(key$, endMarker + 1)
-        key$ = LEFT$(key$, endMarker - 1)
         parse%% = True
     END IF
 END FUNCTION
