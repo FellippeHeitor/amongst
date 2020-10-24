@@ -9,9 +9,12 @@ DIM remoteFile$, localFile$
 DIM newContents$
 
 localFile$ = COMMAND$
+IF LEFT$(localFile$, 2) = "./" THEN localFile$ = MID$(localFile$, 3)
 IF _FILEEXISTS(localFile$) = false THEN
     PRINT "Incorrect usage."
     SYSTEM
+ELSE
+    PRINT "*"; localFile$; "* found;"
 END IF
 
 IF INSTR(_OS$, "WIN") THEN
@@ -28,13 +31,14 @@ IF _FILEEXISTS(remoteFile$) THEN
     GET #1, , newContents$
     CLOSE #1
 
-    OPEN localFile$ FOR OUTPUT AS #1: CLOSE #1
+    KILL localFile$
     OPEN localFile$ FOR BINARY AS #1
     PUT #1, , newContents$
     CLOSE #1
 
     KILL remoteFile$
-    SHELL _DONTWAIT localFile$
+    SHELL _HIDE "chmod +x " + CHR$(34) + COMMAND$ + CHR$(34)
+    SHELL _DONTWAIT CHR$(34) + COMMAND$ + CHR$(34)
     PRINT "Update successful."
     SYSTEM
 ELSE

@@ -266,7 +266,7 @@ DO
                 newVersion = VAL(MID$(file$, INSTR(file$, "=") + 1))
 
                 IF newVersion > gameVersion THEN
-                    PRINT "Downloading new version ("; LTRIM$(STR$(newVersion)); ")..."
+                    PRINT "Downloading new version ("; LTRIM$(STR$(newVersion)); ")... ";
 
                     IF INSTR(_OS$, "WIN") THEN
                         remoteFile$ = "server_win.exe"
@@ -284,6 +284,7 @@ DO
 
                         SELECT CASE result
                             CASE 0 'success
+                                PRINT "done."
                                 fileHandle = FREEFILE
                                 OPEN remoteFile$ FOR BINARY AS #fileHandle
                                 PUT #fileHandle, , file$
@@ -294,7 +295,8 @@ DO
                                         sendData player(j), id_KICK, "Server auto-updating; try again in a few moments."
                                     NEXT
 
-                                    SHELL _DONTWAIT updater$ + " " + CHR$(34) + COMMAND$(0) + CHR$(34)
+                                    CLOSE host
+                                    SHELL _DONTWAIT CHR$(34) + updater$ + CHR$(34) + " " + CHR$(34) + COMMAND$(0) + CHR$(34)
                                     SYSTEM
                                 ELSE
                                     packet$ = "Unable to update - missing '" + updater$ + "'."
