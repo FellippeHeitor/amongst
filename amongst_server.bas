@@ -28,6 +28,7 @@ CONST id_PLAYERONLINE = 10
 CONST id_PLAYEROFFLINE = 11
 CONST id_PONG = 12
 CONST id_PLAYERQUIT = 13
+CONST id_GAMEVERSION = 14
 
 TYPE object
     name AS STRING
@@ -52,6 +53,7 @@ DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG
 DIM id AS INTEGER, value$
+DIM packet$
 
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
@@ -80,6 +82,7 @@ DO
                     player(i).handle = newClient
                     player(i).state = True
                     player(i).broadcastOffline = False
+                    sendData player(i), id_GAMEVERSION, MKI$(gameVersion)
                     sendData player(i), id_ID, MKI$(i)
 
                     'send existing players' data:
@@ -101,7 +104,6 @@ DO
             NEXT
             PRINT "User at " + _CONNECTIONADDRESS$(newClient) + " connected as client #" + LTRIM$(STR$(i))
         ELSE
-            DIM packet$
             packet$ = MKI$(id_SERVERFULL) + endSignal
             PUT #newClient, , packet$
             PRINT "Connection from " + _CONNECTIONADDRESS$(newClient) + " refused (server full)"
@@ -185,11 +187,20 @@ DO
                     player(i).hasNewPosition = player(i).hasNewPosition + value$
                     player(i).x = CVS(LEFT$(value$, 4))
                     player(i).y = CVS(RIGHT$(value$, 4))
+                CASE id_GAMEVERSION
+                    'player is signaling it will disconnect due to wrong version
+                    player(i).x = -1
+                    player(i).y = -1
                 CASE id_PLAYERQUIT
                     player(i).state = False
                     CLOSE player(i).handle
                     totalClients = totalClients - 1
-                    PRINT "Client #" + LTRIM$(STR$(i)) + " quit."
+                    PRINT "Client #" + LTRIM$(STR$(i)) + " quit";
+                    IF player(i).x = -1 AND player(i).y = -1 THEN
+                        PRINT " - wrong version."
+                    ELSE
+                        PRINT "."
+                    END IF
                     EXIT DO
                 CASE id_CHAT
                     DIM chatMessage$

@@ -27,6 +27,7 @@ CONST id_PLAYERONLINE = 10
 CONST id_PLAYEROFFLINE = 11
 CONST id_PONG = 12
 CONST id_PLAYERQUIT = 13
+CONST id_GAMEVERSION = 14
 
 CONST timeout = 30
 
@@ -55,7 +56,7 @@ DIM SHARED mode AS INTEGER
 DIM SHARED totalClients AS INTEGER
 DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
-DIM SHARED playerStream(1 TO 10) AS STRING
+'DIM SHARED playerStream(1 TO 10) AS STRING
 DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
 DIM SHARED warning(1 TO 30) AS object
 DIM SHARED chat(1 TO 14) AS object, hasUnreadMessages AS _BYTE, chatOpen AS _BYTE
@@ -125,8 +126,8 @@ _DEST 0
 
 
 DIM userName$, userColor%
-IF _FILEEXISTS("amongus.dat") THEN
-    OPEN "amongus.dat" FOR BINARY AS #1
+IF _FILEEXISTS(COMMAND$) THEN
+    OPEN COMMAND$ FOR BINARY AS #1
     GET #1, , i
     userName$ = SPACE$(i)
     GET #1, , userName$
@@ -190,7 +191,8 @@ DO
                 serverStream = ""
                 EXIT DO
             END IF
-            PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
+            CLS
+            COLOR 14: PRINT "/\ ";: COLOR 12
             PRINT "Failed to connect to server."
     END SELECT
 LOOP
@@ -198,18 +200,36 @@ LOOP
 serverPing = TIMER
 DO
     getData server, serverStream
+    WHILE parse(serverStream, id, value$)
+        SELECT CASE id
+            CASE id_SERVERFULL
+                CLS
+                COLOR 14: PRINT "/\ ";: COLOR 12
+                PRINT "Server full."
+                CLOSE server.handle
+                GOTO start
+            CASE id_GAMEVERSION
+                IF CVI(value$) <> gameVersion THEN
+                    CLS
+                    COLOR 14: PRINT "/\ ";: COLOR 12
+                    PRINT "Server version incompatible."
+                    sendData server, id_GAMEVERSION, ""
+                    sendData server, id_PLAYERQUIT, ""
+                    CLOSE server.handle
+                    GOTO start
+                ELSE
+                    EXIT DO
+                END IF
+        END SELECT
+    WEND
+    IF TIMER - serverPing > 10 THEN
+        CLS
+        COLOR 14: PRINT "/\ ";: COLOR 12
+        PRINT "No response from server."
+        GOTO start
+    END IF
     _LIMIT 30
-LOOP UNTIL LEN(serverStream) > 0 OR TIMER - serverPing > 10
-
-IF serverStream = MKI$(id_SERVERFULL) + endSignal THEN
-    PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
-    PRINT "Server full."
-    GOTO start
-ELSEIF LEN(serverStream) = 0 THEN
-    PRINT: COLOR 14: PRINT "/\ ";: COLOR 12
-    PRINT "No response from server."
-    GOTO start
-END IF
+LOOP
 
 SCREEN _NEWIMAGE(windowWidth, windowHeight, 32)
 _FONT 8
@@ -273,7 +293,9 @@ DO
                     CASE id_COLOR
                         player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
                     CASE id_POS
-                        playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
+                        'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
+                        player(CVI(LEFT$(value$, 2))).x = CVS(MID$(value$, LEN(value$) - 7, 4))
+                        player(CVI(LEFT$(value$, 2))).y = CVS(RIGHT$(value$, 4))
                     CASE id_NAME
                         player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
                     CASE id_CHAT
@@ -355,7 +377,7 @@ DO
 
         exitSign = _EXIT
         IF exitSign THEN
-            sendData server, id_PLAYERQUIT, MKI$(me)
+            sendData server, id_PLAYERQUIT, ""
             EXIT DO
         END IF
 
@@ -376,12 +398,12 @@ DO
     DIM x AS SINGLE, y AS SINGLE
     FOR i = 1 TO UBOUND(player)
         IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
-        IF i <> me AND LEN(playerStream(i)) > 0 THEN
-            'process player stream of coordinates
-            player(i).x = CVS(MID$(playerStream(i), 1, 4))
-            player(i).y = CVS(MID$(playerStream(i), 5, 4))
-            playerStream(i) = MID$(playerStream(i), 9)
-        END IF
+        'IF i <> me AND LEN(playerStream(i)) > 0 THEN
+        '    'process player stream of coordinates
+        '    player(i).x = CVS(MID$(playerStream(i), 1, 4))
+        '    player(i).y = CVS(MID$(playerStream(i), 5, 4))
+        '    playerStream(i) = MID$(playerStream(i), 9)
+        'END IF
         x = player(i).x + camera.x + COS(shipFlotation) * shipFloatIntensity
         y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatIntensity
         CircleFill x, y + 6, 15, _RGB32(0, 50)
