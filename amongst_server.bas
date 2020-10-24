@@ -29,6 +29,8 @@ CONST id_PLAYEROFFLINE = 11
 CONST id_PONG = 12
 CONST id_PLAYERQUIT = 13
 CONST id_GAMEVERSION = 14
+CONST id_SHOOT = 15
+CONST id_SIZE = 16
 
 TYPE object
     name AS STRING
@@ -44,6 +46,8 @@ TYPE object
     hasNewColor AS _BYTE
     hasNewPosition AS STRING
     hasNewMessage AS _BYTE
+    hasNewSize AS _BYTE
+    size AS INTEGER
 END TYPE
 
 DIM SHARED totalClients AS INTEGER
@@ -82,6 +86,7 @@ DO
                     player(i).handle = newClient
                     player(i).state = True
                     player(i).broadcastOffline = False
+                    player(i).size = 15
                     sendData player(i), id_GAMEVERSION, MKI$(gameVersion)
                     sendData player(i), id_ID, MKI$(i)
 
@@ -95,6 +100,7 @@ DO
                             sendData player(i), id_NAME, MKI$(j) + player(j).name
                             sendData player(i), id_COLOR, MKI$(j) + MKI$(player(j).color)
                             sendData player(i), id_POS, MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
+                            sendData player(i), id_SIZE, MKI$(j) + MKI$(player(j).size)
                         END IF
                     NEXT
 
@@ -127,6 +133,7 @@ DO
         player(i).hasNewColor = False
         player(i).hasNewPosition = ""
         player(i).hasNewMessage = False
+        player(i).hasNewSize = False
 
         IF TIMER - player(i).ping > timeout THEN
             'player inactive
@@ -183,10 +190,22 @@ DO
                     IF changed THEN
                         sendData player(i), id_NEWCOLOR, MKI$(newcolor)
                     END IF
+                CASE id_SHOOT
+                    IF player(CVI(LEFT$(value$, 2))).size > 5 THEN
+                        player(CVI(LEFT$(value$, 2))).size = player(CVI(LEFT$(value$, 2))).size - 2
+                        FOR j = 1 TO UBOUND(player)
+                            IF player(j).state = False THEN _CONTINUE
+                            sendData player(j), id_SHOOT, MKI$(i) + LEFT$(value$, 2)
+                            sendData player(j), id_SIZE, LEFT$(value$, 2) + MKI$(player(CVI(LEFT$(value$, 2))).size)
+                        NEXT
+                    END IF
                 CASE id_POS
                     player(i).hasNewPosition = player(i).hasNewPosition + value$
                     player(i).x = CVS(LEFT$(value$, 4))
                     player(i).y = CVS(RIGHT$(value$, 4))
+                CASE id_SIZE
+                    player(i).hasNewSize = True
+                    player(i).size = CVI(value$)
                 CASE id_GAMEVERSION
                     'player is signaling it will disconnect due to wrong version
                     player(i).x = -1
@@ -222,6 +241,7 @@ DO
                     IF player(i).hasNewColor THEN sendData player(j), id_COLOR, MKI$(i) + MKI$(player(i).color)
                     IF LEN(player(i).hasNewPosition) THEN sendData player(j), id_POS, MKI$(i) + player(i).hasNewPosition
                     IF player(i).hasNewMessage THEN sendData player(j), id_CHAT, MKI$(i) + chatMessage$
+                    IF player(i).hasNewSize THEN sendData player(j), id_SIZE, MKI$(i) + MKI$(player(i).size)
                 END IF
             NEXT
         END IF
