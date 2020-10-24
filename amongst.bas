@@ -79,7 +79,7 @@ i = i + 1: serverList(i) = "alephc.xyz Australia"
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
-vgaPalette:
+playerColorPalette:
 DATA 195,17,16
 DATA 14,51,196
 DATA 18,125,46
@@ -93,7 +93,7 @@ DATA 112,73,28
 DATA 93,250,220
 DATA 79,240,58
 
-RESTORE vgaPalette
+RESTORE playerColorPalette
 FOR i = 1 TO UBOUND(colors)
     READ r%, g%, b%
     colors(i) = _RGB32(r%, g%, b%)
@@ -436,14 +436,14 @@ DO
 
     IF chatOpen THEN
         hasUnreadMessages = False
-        LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0, 80), BF
+        LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0, 150), BF
         LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0), B
         _FONT 16
         COLOR _RGB32(0)
         FOR i = 1 TO UBOUND(chat)
             IF chat(i).state THEN
                 y = 65 + _FONTHEIGHT * ((i - 1) * 2)
-                LINE (55, y - 10)-(_WIDTH - 55, y + 18), _RGB32(255, 100), BF
+                LINE (55, y - 10)-(_WIDTH - 55, y + 18), _RGB32(255, 80), BF
                 _FONT 8
                 x = 60
                 IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).name)
@@ -503,7 +503,11 @@ DO
             IF TIMER - lastSentChat > messageSpeed THEN tooFast = False
         END IF
     ELSE
-        _KEYCLEAR 1
+        char$ = INKEY$
+        SELECT CASE char$
+            CASE CHR$(13)
+                chatOpen = True
+        END SELECT
     END IF
 
     DIM mouseIsDown AS _BYTE, mouseDownOn AS INTEGER, mouseWheel AS INTEGER
