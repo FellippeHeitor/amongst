@@ -33,7 +33,7 @@ CONST id_SIZE = 16
 CONST id_UPDATESERVER = 17
 CONST id_KICK = 18
 
-CONST timeout = 30
+CONST timeout = 10
 
 CONST windowWidth = 800
 CONST windowHeight = 600
@@ -126,10 +126,10 @@ mainWindow = _NEWIMAGE(windowWidth, windowHeight, 32)
 mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
 _DEST mapImage
 RANDOMIZE 6
-FOR i = 1 TO 500
-    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 2, _RGB32(255, 80)
-NEXT
-FOR i = 1 TO 10
+'FOR i = 1 TO 500
+'    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 2, _RGB32(255, 80)
+'NEXT
+FOR i = 1 TO 50
     CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
 NEXT
 _DEST 0
@@ -377,7 +377,6 @@ DO
                         END IF
                     CASE id_PONG
                         waitingForPong = False
-                        currentPing = TIMER - serverPing
                     CASE id_KICK
                         SCREEN 0
                         _AUTODISPLAY
@@ -448,6 +447,15 @@ DO
         COLOR _RGB32(255)
 
         DIM m$
+        currentPing = TIMER - serverPing
+        IF currentPing > timeout THEN
+            SCREEN 0
+            _AUTODISPLAY
+            COLOR 14: PRINT "/\ ";: COLOR 12
+            PRINT "Connection lost (timed out)"
+            CLOSE server.handle
+            GOTO start
+        END IF
         m$ = LTRIM$(STR$(currentPing))
         m$ = MID$(m$, INSTR(m$, ".") + 1)
         m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"

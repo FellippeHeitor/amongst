@@ -64,7 +64,7 @@ DIM packet$
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
-CONST timeout = 30
+CONST timeout = 10
 
 DIM SHARED host AS LONG
 PRINT "Starting server (ver. "; _TRIM$(STR$(gameVersion)); ")... ";
