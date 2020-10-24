@@ -383,6 +383,11 @@ DO
             IF _KEYDOWN(keyDOWN) THEN player(me).y = player(me).y + playerSpeed
             IF _KEYDOWN(keyLEFT) THEN player(me).x = player(me).x - playerSpeed
             IF _KEYDOWN(keyRIGHT) THEN player(me).x = player(me).x + playerSpeed
+            IF _KEYDOWN(119) THEN player(me).y = player(me).y - playerSpeed
+            IF _KEYDOWN(115) THEN player(me).y = player(me).y + playerSpeed
+            IF _KEYDOWN(97) THEN player(me).x = player(me).x - playerSpeed
+            IF _KEYDOWN(100) THEN player(me).x = player(me).x + playerSpeed
+
 
             IF player(me).x < 0 THEN player(me).x = 0
             IF player(me).y < 0 THEN player(me).y = 0
