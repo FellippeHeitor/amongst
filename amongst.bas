@@ -87,11 +87,12 @@ DIM score AS LONG
 
 DIM SHARED ui(1 TO 1) AS object, focus AS INTEGER
 
-DIM serverList(1 TO 3) AS STRING, chosenServer$
+DIM serverList(1 TO 4) AS STRING, chosenServer$
 i = 0
 i = i + 1: serverList(i) = "localhost Local host"
 i = i + 1: serverList(i) = "spriggsyspriggs.ddns.net North America"
 i = i + 1: serverList(i) = "alephc.xyz Australia"
+i = i + 1: serverList(i) = "187.94.219.178 Brazil"
 
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
