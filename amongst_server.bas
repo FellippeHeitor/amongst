@@ -25,7 +25,7 @@ TYPE object
     ping AS SINGLE
     hasNewName AS _BYTE
     hasNewColor AS _BYTE
-    hasNewPosition AS _BYTE
+    hasNewPosition AS STRING
     hasNewMessage AS _BYTE
 END TYPE
 
@@ -101,7 +101,7 @@ DO
 
         player(i).hasNewName = False
         player(i).hasNewColor = False
-        player(i).hasNewPosition = False
+        player(i).hasNewPosition = ""
         player(i).hasNewMessage = False
 
         IF TIMER - player(i).ping > timeout THEN
@@ -160,9 +160,9 @@ DO
                         sendData player(i), "NEWCOLOR", MKI$(newcolor)
                     END IF
                 CASE "PLAYERPOS"
-                    player(i).hasNewPosition = True
-                    player(i).x = CVI(LEFT$(value$, 2))
-                    player(i).y = CVI(RIGHT$(value$, 2))
+                    player(i).hasNewPosition = player(i).hasNewPosition + value$
+                    player(i).x = CVS(LEFT$(value$, 4))
+                    player(i).y = CVS(RIGHT$(value$, 4))
                 CASE "PLAYERQUIT"
                     player(i).state = False
                     CLOSE player(i).handle
@@ -187,7 +187,7 @@ DO
                 IF player(j).state = True THEN
                     IF player(i).hasNewName THEN sendData player(j), "PLAYERNAME", MKI$(i) + player(i).name
                     IF player(i).hasNewColor THEN sendData player(j), "PLAYERCOLOR", MKI$(i) + MKI$(player(i).color)
-                    IF player(i).hasNewPosition THEN sendData player(j), "PLAYERPOS", MKI$(i) + MKS$(player(i).x) + MKS$(player(i).y)
+                    IF LEN(player(i).hasNewPosition) THEN sendData player(j), "PLAYERPOS", MKI$(i) + player(i).hasNewPosition
                     IF player(i).hasNewMessage THEN sendData player(j), "PLAYERCHAT", MKI$(i) + chatMessage$
                 END IF
             NEXT

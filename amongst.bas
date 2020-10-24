@@ -42,7 +42,7 @@ DIM idSet AS _BYTE
 DIM shipMovement AS _BYTE
 DIM gameVersionChecked AS _BYTE
 DIM i AS LONG
-DIM serverPing AS SINGLE, currentPing AS SINGLE
+DIM serverPing AS SINGLE, currentPing AS SINGLE, waitingForPong AS _BYTE
 DIM key$, value$
 DIM choice AS STRING
 DIM exitSign AS INTEGER
@@ -219,14 +219,17 @@ DO
                 IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
                     player(me).prevX = player(me).x
                     player(me).prevY = player(me).y
-                    sendData server, "PLAYERPOS", MKI$(player(me).x) + MKI$(player(me).y)
+                    sendData server, "PLAYERPOS", MKS$(player(me).x) + MKS$(player(me).y)
                 END IF
             ELSE
                 gameVersionChecked = False
             END IF
 
-            sendData server, "PING", ""
-            serverPing = TIMER
+            IF waitingForPong = False THEN
+                serverPing = TIMER
+                sendData server, "PING", ""
+                waitingForPong = True
+            END IF
 
             getData server, serverStream
             DO WHILE parse(serverStream, key$, value$)
@@ -260,6 +263,7 @@ DO
                             addWarning player(CVI(value$)).name + " left the game."
                         END IF
                     CASE "PONG"
+                        waitingForPong = False
                         currentPing = TIMER - serverPing
                 END SELECT
             LOOP
@@ -493,9 +497,7 @@ SUB addMessageToChat (id AS INTEGER, text$)
     FOR i = 2 TO UBOUND(chat)
         SWAP chat(i), chat(i - 1)
     NEXT
-    IF id = me THEN
-        chat(UBOUND(chat)).id = me
-    END IF
+    chat(UBOUND(chat)).id = id
     chat(UBOUND(chat)).state = True
     chat(UBOUND(chat)).name = player(id).name
     chat(UBOUND(chat)).text = text$
