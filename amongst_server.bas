@@ -217,7 +217,7 @@ DO
                     player(i).state = False
                     CLOSE player(i).handle
                     totalClients = totalClients - 1
-                    PRINT "Client #" + LTRIM$(STR$(i)) + " quit";
+                    PRINT "Client #" + LTRIM$(STR$(i)) + " " + CHR$(34) + player(i).name + CHR$(34) + " quit";
                     IF player(i).x = -1 AND player(i).y = -1 THEN
                         PRINT " - wrong version."
                     ELSE
