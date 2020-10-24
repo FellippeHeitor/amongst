@@ -30,6 +30,8 @@ CONST id_PLAYERQUIT = 13
 CONST id_GAMEVERSION = 14
 CONST id_SHOOT = 15
 CONST id_SIZE = 16
+CONST id_UPDATESERVER = 17
+CONST id_KICK = 18
 
 CONST timeout = 30
 
@@ -114,10 +116,13 @@ FOR i = 1 TO UBOUND(colors)
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
 
+DIM SHARED mainWindow AS LONG
 DIM SHARED mapImage AS LONG
 DIM SHARED messageIcon AS LONG
 
-mapImage = _NEWIMAGE(windowWidth * 3, windowHeight * 2, 32)
+mainWindow = _NEWIMAGE(windowWidth, windowHeight, 32)
+
+mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
 _DEST mapImage
 RANDOMIZE 6
 FOR i = 1 TO 50
@@ -168,6 +173,12 @@ DO
 
     DO
         choice = INKEY$
+
+        exitSign = _EXIT
+        IF exitSign THEN
+            SYSTEM
+        END IF
+
         _LIMIT 30
     LOOP UNTIL choice >= "1" AND choice <= "3"
 
@@ -175,6 +186,7 @@ DO
     DIM c AS INTEGER, attempt AS INTEGER
     SELECT CASE VAL(choice)
         CASE 1
+            mode = mode_freeplay
             EXIT DO
         CASE 2
             COLOR 7
@@ -184,6 +196,12 @@ DO
             NEXT
             DO
                 choice = INKEY$
+
+                exitSign = _EXIT
+                IF exitSign THEN
+                    SYSTEM
+                END IF
+
                 _LIMIT 30
             LOOP UNTIL VAL(choice) >= 1 AND VAL(choice) <= UBOUND(serverList)
             clientTemp:
@@ -248,7 +266,7 @@ IF mode = mode_onlineclient THEN
     LOOP
 END IF
 
-SCREEN _NEWIMAGE(windowWidth, windowHeight, 32)
+SCREEN mainWindow
 _FONT 8
 _PRINTMODE _KEEPBACKGROUND
 
@@ -350,6 +368,15 @@ DO
                     CASE id_PONG
                         waitingForPong = False
                         currentPing = TIMER - serverPing
+                    CASE id_KICK
+                        SCREEN 0
+                        _AUTODISPLAY
+                        COLOR 14: PRINT "/\ ";: COLOR 12
+                        PRINT "Kicked from server. Reason: "
+                        COLOR 14
+                        PRINT "   "; value$
+                        CLOSE server.handle
+                        GOTO start
                 END SELECT
             LOOP
 
@@ -392,6 +419,12 @@ DO
         adjustCamera
     END IF
 
+    exitSign = _EXIT
+    IF exitSign THEN
+        IF mode = mode_onlineclient THEN sendData server, id_PLAYERQUIT, ""
+        EXIT DO
+    END IF
+
     IF (mode = mode_onlineclient) THEN
         DIM k AS LONG
         k = _KEYHIT
@@ -400,12 +433,6 @@ DO
             IF chatOpen THEN
                 chatOpen = False
             END IF
-        END IF
-
-        exitSign = _EXIT
-        IF exitSign THEN
-            sendData server, id_PLAYERQUIT, ""
-            EXIT DO
         END IF
 
         COLOR _RGB32(255)
@@ -550,6 +577,11 @@ DO
                         sendData server, id_SIZE, MKI$(player(me).size)
                         myMessage$ = ""
                         chatOpen = False
+                    ELSEIF myMessage$ = ">updateserver" THEN
+                        'temporary solution for triggering auto-update checks
+                        sendData server, id_UPDATESERVER, ""
+                        myMessage$ = ""
+                        chatOpen = False
                     ELSE
                         IF LEN(myMessage$) > 0 AND TIMER - lastSentChat > messageSpeed THEN
                             lastSentChat = TIMER
@@ -628,15 +660,17 @@ DO
         mouseIsDown = False
     END IF
 
-    _FONT 16
-    COLOR _RGB32(0)
-    _PRINTSTRING (1, 1), "Score:" + STR$(score)
-    COLOR _RGB32(255)
-    _PRINTSTRING (0, 0), "Score:" + STR$(score)
-    _FONT 8
+    IF mode = mode_onlineclient THEN
+        _FONT 16
+        COLOR _RGB32(0)
+        _PRINTSTRING (1, 1), "Score:" + STR$(score)
+        COLOR _RGB32(255)
+        _PRINTSTRING (0, 0), "Score:" + STR$(score)
+        _FONT 8
+    END IF
 
     _DISPLAY
-    _LIMIT 60
+    _LIMIT 120
 LOOP
 CLOSE
 SYSTEM
@@ -648,9 +682,15 @@ SUB addMessageToChat (id AS INTEGER, text$)
     NEXT
     chat(UBOUND(chat)).id = id
     chat(UBOUND(chat)).state = True
-    chat(UBOUND(chat)).name = player(id).name
+    IF id > 0 THEN
+        chat(UBOUND(chat)).name = player(id).name
+        chat(UBOUND(chat)).color = player(id).color
+    ELSE
+        chat(UBOUND(chat)).name = "SYSTEM:"
+        chat(UBOUND(chat)).color = 7
+        chatOpen = True
+    END IF
     chat(UBOUND(chat)).text = text$
-    chat(UBOUND(chat)).color = player(id).color
 END SUB
 
 SUB addWarning (text$)
