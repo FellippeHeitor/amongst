@@ -30,8 +30,10 @@ CONST id_PLAYERQUIT = 13
 CONST id_GAMEVERSION = 14
 CONST id_SHOOT = 15
 CONST id_SIZE = 16
+CONST id_UPDATESERVER = 17
+CONST id_KICK = 18
 
-CONST timeout = 30
+CONST timeout = 10
 
 CONST windowWidth = 800
 CONST windowHeight = 600
@@ -85,11 +87,12 @@ DIM score AS LONG
 
 DIM SHARED ui(1 TO 1) AS object, focus AS INTEGER
 
-DIM serverList(1 TO 3) AS STRING, chosenServer$
+DIM serverList(1 TO 4) AS STRING, chosenServer$
 i = 0
 i = i + 1: serverList(i) = "localhost Local host"
 i = i + 1: serverList(i) = "spriggsyspriggs.ddns.net North America"
 i = i + 1: serverList(i) = "alephc.xyz Australia"
+i = i + 1: serverList(i) = "187.94.219.178 Brazil"
 
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
@@ -114,12 +117,18 @@ FOR i = 1 TO UBOUND(colors)
     colors(i) = _RGB32(r%, g%, b%)
 NEXT
 
+DIM SHARED mainWindow AS LONG
 DIM SHARED mapImage AS LONG
 DIM SHARED messageIcon AS LONG
 
-mapImage = _NEWIMAGE(windowWidth * 3, windowHeight * 2, 32)
+mainWindow = _NEWIMAGE(windowWidth, windowHeight, 32)
+
+mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
 _DEST mapImage
 RANDOMIZE 6
+'FOR i = 1 TO 500
+'    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 2, _RGB32(255, 80)
+'NEXT
 FOR i = 1 TO 50
     CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
 NEXT
@@ -168,6 +177,12 @@ DO
 
     DO
         choice = INKEY$
+
+        exitSign = _EXIT
+        IF exitSign THEN
+            SYSTEM
+        END IF
+
         _LIMIT 30
     LOOP UNTIL choice >= "1" AND choice <= "3"
 
@@ -175,6 +190,7 @@ DO
     DIM c AS INTEGER, attempt AS INTEGER
     SELECT CASE VAL(choice)
         CASE 1
+            mode = mode_freeplay
             EXIT DO
         CASE 2
             COLOR 7
@@ -184,6 +200,12 @@ DO
             NEXT
             DO
                 choice = INKEY$
+
+                exitSign = _EXIT
+                IF exitSign THEN
+                    SYSTEM
+                END IF
+
                 _LIMIT 30
             LOOP UNTIL VAL(choice) >= 1 AND VAL(choice) <= UBOUND(serverList)
             clientTemp:
@@ -199,6 +221,12 @@ DO
                 IF server.handle THEN EXIT DO
                 attempt = attempt + 1
                 LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
+
+                exitSign = _EXIT
+                IF exitSign THEN
+                    SYSTEM
+                END IF
+
                 _LIMIT 30
             LOOP WHILE attempt < maxAttempts
             IF server.handle THEN
@@ -248,7 +276,7 @@ IF mode = mode_onlineclient THEN
     LOOP
 END IF
 
-SCREEN _NEWIMAGE(windowWidth, windowHeight, 32)
+SCREEN mainWindow
 _FONT 8
 _PRINTMODE _KEEPBACKGROUND
 
@@ -286,15 +314,15 @@ END IF
 DO
     CLS
 
-    DIM shipFlotation AS SINGLE, shipFloatIntensity AS SINGLE
+    DIM shipFlotation AS SINGLE, shipFloatAmplitude AS SINGLE
     IF shipMovement THEN
         shipFlotation = shipFlotation + .05
         IF shipFlotation > _PI(2) THEN shipFlotation = shipFlotation - _PI(2)
-        shipFloatIntensity = 1.5
+        shipFloatAmplitude = 1.5
     END IF
 
     _DONTBLEND
-    _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatIntensity, camera.y + SIN(shipFlotation) * shipFloatIntensity), mapImage
+    _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatAmplitude, camera.y + SIN(shipFlotation) * shipFloatAmplitude), mapImage
     _BLEND
 
     SELECT CASE mode
@@ -336,9 +364,9 @@ DO
                         hasUnreadMessages = True
                     CASE id_SHOOT
                         target = CVI(RIGHT$(value$, 2))
-                        addParticles player(target).x, player(target).y, 50, _RGB32(0)
-                        addParticles player(target).x, player(target).y, 50, _RGB32(255)
-                        addParticles player(target).x, player(target).y, 50, colors(player(target).color)
+                        IF target = me THEN score = score - 100
+                        addParticles player(target).x, player(target).y, 5, _RGB32(255)
+                        addParticles player(target).x, player(target).y, 100, colors(player(target).color)
                         thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
                     CASE id_PLAYERONLINE
                         player(CVI(value$)).state = True
@@ -349,7 +377,15 @@ DO
                         END IF
                     CASE id_PONG
                         waitingForPong = False
-                        currentPing = TIMER - serverPing
+                    CASE id_KICK
+                        SCREEN 0
+                        _AUTODISPLAY
+                        COLOR 14: PRINT "/\ ";: COLOR 12
+                        PRINT "Kicked from server. Reason: "
+                        COLOR 14
+                        PRINT "   "; value$
+                        CLOSE server.handle
+                        GOTO start
                 END SELECT
             LOOP
 
@@ -397,6 +433,12 @@ DO
         adjustCamera
     END IF
 
+    exitSign = _EXIT
+    IF exitSign THEN
+        IF mode = mode_onlineclient THEN sendData server, id_PLAYERQUIT, ""
+        EXIT DO
+    END IF
+
     IF (mode = mode_onlineclient) THEN
         DIM k AS LONG
         k = _KEYHIT
@@ -407,15 +449,18 @@ DO
             END IF
         END IF
 
-        exitSign = _EXIT
-        IF exitSign THEN
-            sendData server, id_PLAYERQUIT, ""
-            EXIT DO
-        END IF
-
         COLOR _RGB32(255)
 
         DIM m$
+        currentPing = TIMER - serverPing
+        IF currentPing > timeout THEN
+            SCREEN 0
+            _AUTODISPLAY
+            COLOR 14: PRINT "/\ ";: COLOR 12
+            PRINT "Connection lost (timed out)"
+            CLOSE server.handle
+            GOTO start
+        END IF
         m$ = LTRIM$(STR$(currentPing))
         m$ = MID$(m$, INSTR(m$, ".") + 1)
         m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"
@@ -441,8 +486,8 @@ DO
         targetAnimation = targetAnimation - .1
         IF targetAnimation < 0 THEN targetAnimation = 5
 
-        x = player(target).x + camera.x + COS(shipFlotation) * shipFloatIntensity
-        y = player(target).y + camera.y + SIN(shipFlotation) * shipFloatIntensity
+        x = player(target).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+        y = player(target).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
         CircleFill x, y, player(target).size + 10 + targetAnimation, _RGB32(255, 0, 0, 100)
     END IF
 
@@ -455,8 +500,8 @@ DO
         '    playerStream(i) = MID$(playerStream(i), 9)
         'END IF
 
-        x = player(i).x + camera.x + COS(shipFlotation) * shipFloatIntensity
-        y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatIntensity
+        x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+        y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
         CircleFill x, y + 6, player(i).size + 5, _RGB32(0, 50)
         CircleFill x, y, player(i).size + 5, _RGB32(0)
         CircleFill x, y, player(i).size, colors(player(i).color)
@@ -469,13 +514,12 @@ DO
     IF _KEYDOWN(keySPACE) THEN
         DIM lastShot AS SINGLE
         IF target > 0 THEN
-            IF TIMER - lastShot > 1 THEN
+            IF TIMER - lastShot > .5 THEN
                 lastShot = TIMER
                 score = score + 100
                 sendData server, id_SHOOT, MKI$(target)
-                addParticles player(target).x, player(target).y, 50, _RGB32(0)
-                addParticles player(target).x, player(target).y, 50, _RGB32(255)
-                addParticles player(target).x, player(target).y, 50, colors(player(target).color)
+                addParticles player(target).x, player(target).y, 5, _RGB32(255)
+                addParticles player(target).x, player(target).y, 100, colors(player(target).color)
                 thickLine player(me).x + camera.x, player(me).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
             END IF
         END IF
@@ -553,6 +597,11 @@ DO
                     ELSEIF myMessage$ = ">big" THEN
                         player(me).size = 25
                         sendData server, id_SIZE, MKI$(player(me).size)
+                        myMessage$ = ""
+                        chatOpen = False
+                    ELSEIF myMessage$ = ">updateserver" THEN
+                        'temporary solution for triggering auto-update checks
+                        sendData server, id_UPDATESERVER, ""
                         myMessage$ = ""
                         chatOpen = False
                     ELSE
@@ -633,12 +682,14 @@ DO
         mouseIsDown = False
     END IF
 
-    _FONT 16
-    COLOR _RGB32(0)
-    _PRINTSTRING (1, 1), "Score:" + STR$(score)
-    COLOR _RGB32(255)
-    _PRINTSTRING (0, 0), "Score:" + STR$(score)
-    _FONT 8
+    IF mode = mode_onlineclient THEN
+        _FONT 16
+        COLOR _RGB32(0)
+        _PRINTSTRING (1, 1), "Score:" + STR$(score)
+        COLOR _RGB32(255)
+        _PRINTSTRING (0, 0), "Score:" + STR$(score)
+        _FONT 8
+    END IF
 
     _DISPLAY
     _LIMIT 60
@@ -653,9 +704,15 @@ SUB addMessageToChat (id AS INTEGER, text$)
     NEXT
     chat(UBOUND(chat)).id = id
     chat(UBOUND(chat)).state = True
-    chat(UBOUND(chat)).name = player(id).name
+    IF id > 0 THEN
+        chat(UBOUND(chat)).name = player(id).name
+        chat(UBOUND(chat)).color = player(id).color
+    ELSE
+        chat(UBOUND(chat)).name = "SYSTEM:"
+        chat(UBOUND(chat)).color = 7
+        chatOpen = True
+    END IF
     chat(UBOUND(chat)).text = text$
-    chat(UBOUND(chat)).color = player(id).color
 END SUB
 
 SUB addWarning (text$)

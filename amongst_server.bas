@@ -31,6 +31,8 @@ CONST id_PLAYERQUIT = 13
 CONST id_GAMEVERSION = 14
 CONST id_SHOOT = 15
 CONST id_SIZE = 16
+CONST id_UPDATESERVER = 17
+CONST id_KICK = 18
 
 TYPE object
     name AS STRING
@@ -55,14 +57,14 @@ DIM SHARED playerStream(1 TO 10) AS STRING
 DIM SHARED player(1 TO 10) AS object
 DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG
 DIM i AS LONG, j AS LONG
-DIM newClient AS LONG
+DIM newClient AS LONG, checkUpdate AS _BYTE, checkUpdateRequester AS INTEGER
 DIM id AS INTEGER, value$
 DIM packet$
 
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
-CONST timeout = 30
+CONST timeout = 10
 
 DIM SHARED host AS LONG
 PRINT "Starting server (ver. "; _TRIM$(STR$(gameVersion)); ")... ";
@@ -200,7 +202,8 @@ DO
                         NEXT
                     END IF
                 CASE id_POS
-                    player(i).hasNewPosition = player(i).hasNewPosition + value$
+                    'player(i).hasNewPosition = player(i).hasNewPosition + value$
+                    player(i).hasNewPosition = value$
                     player(i).x = CVS(LEFT$(value$, 4))
                     player(i).y = CVS(RIGHT$(value$, 4))
                 CASE id_SIZE
@@ -214,13 +217,18 @@ DO
                     player(i).state = False
                     CLOSE player(i).handle
                     totalClients = totalClients - 1
-                    PRINT "Client #" + LTRIM$(STR$(i)) + " quit";
+                    PRINT "Client #" + LTRIM$(STR$(i)) + " " + CHR$(34) + player(i).name + CHR$(34) + " quit";
                     IF player(i).x = -1 AND player(i).y = -1 THEN
                         PRINT " - wrong version."
                     ELSE
                         PRINT "."
                     END IF
                     EXIT DO
+                CASE id_UPDATESERVER
+                    'temporary solution for triggering auto-update checks
+                    checkUpdate = True
+                    checkUpdateRequester = i
+                    PRINT "Update check requested;"
                 CASE id_CHAT
                     DIM chatMessage$
                     player(i).hasNewMessage = True
@@ -246,6 +254,80 @@ DO
             NEXT
         END IF
     NEXT
+
+    IF checkUpdate THEN
+        DIM remoteFile$, result AS INTEGER, file$, newVersion AS INTEGER
+        DIM fileHandle AS INTEGER, updater$
+
+        remoteFile$ = "www.qb64.org/amongst/amongst_version.txt"
+        result = Download(remoteFile$, 30, file$)
+        SELECT CASE result
+            CASE 0 'success
+                checkUpdate = False
+                newVersion = VAL(MID$(file$, INSTR(file$, "=") + 1))
+
+                IF newVersion > gameVersion THEN
+                    PRINT "Downloading new version ("; LTRIM$(STR$(newVersion)); ")... ";
+
+                    IF INSTR(_OS$, "WIN") THEN
+                        remoteFile$ = "server_win.exe"
+                        updater$ = "amongst_updater.exe"
+                    ELSEIF INSTR(_OS$, "MAC") THEN
+                        remoteFile$ = "server_mac"
+                        updater$ = "./amongst_updater"
+                    ELSE
+                        remoteFile$ = "server_lnx"
+                        updater$ = "./amongst_updater"
+                    END IF
+
+                    DO
+                        result = Download("www.qb64.org/amongst/" + remoteFile$, 30, file$)
+
+                        SELECT CASE result
+                            CASE 0 'success
+                                PRINT "done."
+                                fileHandle = FREEFILE
+                                OPEN remoteFile$ FOR BINARY AS #fileHandle
+                                PUT #fileHandle, , file$
+                                CLOSE #fileHandle
+                                IF _FILEEXISTS(updater$) THEN
+                                    FOR j = 1 TO UBOUND(player)
+                                        IF player(j).state = False THEN _CONTINUE
+                                        sendData player(j), id_KICK, "Server auto-updating; try again in a few moments."
+                                    NEXT
+
+                                    CLOSE host
+                                    SHELL _DONTWAIT CHR$(34) + updater$ + CHR$(34) + " " + CHR$(34) + COMMAND$(0) + CHR$(34)
+                                    SYSTEM
+                                ELSE
+                                    packet$ = "Unable to update - missing '" + updater$ + "'."
+                                    PRINT packet$
+                                    sendData player(checkUpdateRequester), id_CHAT, MKI$(0) + packet$
+                                    checkUpdate = False
+                                    EXIT DO
+                                END IF
+                            CASE 2, 3 'can't connect or timed out
+                                packet$ = "Unable to download update; try again in a few moments."
+                                PRINT packet$
+                                sendData player(checkUpdateRequester), id_CHAT, MKI$(0) + packet$
+                                checkUpdate = False
+                                EXIT DO
+                        END SELECT
+                        _LIMIT 10
+                    LOOP
+                ELSE
+                    packet$ = "No new version available."
+                    PRINT packet$
+                    sendData player(checkUpdateRequester), id_CHAT, MKI$(0) + packet$
+                    checkUpdate = False
+                END IF
+            CASE 2, 3 'can't connect or timed out
+                packet$ = "Unable to check new versions."
+                PRINT packet$
+                sendData player(checkUpdateRequester), id_CHAT, MKI$(0) + packet$
+                checkUpdate = False
+        END SELECT
+    END IF
 
     _LIMIT 60
 LOOP
@@ -273,4 +355,77 @@ FUNCTION parse%% (buffer AS STRING, id AS INTEGER, value$)
     END IF
 END FUNCTION
 
+FUNCTION Download% (url$, timelimit, contents$)
+    'adapted from http://www.qb64.org/wiki/Downloading_Files
+    '
+    'Usage:
+    '    Call Download%() in a loop until one of the return codes
+    '    bellow is returned. Contents downloaded are returned in
+    '    the contents$ variable.
+    '
+    'Return codes:
+    '    0 = success
+    '    1 = still working
+    '    2 = can't connect
+    '    3 = timed out
+
+    STATIC client AS LONG, l AS LONG
+    STATIC prevUrl$, prevUrl2$, a$, a2$, url2$, url3$
+    STATIC x AS LONG, i AS LONG, i2 AS LONG, i3 AS LONG
+    STATIC e$, x$, t!, d$, fh AS INTEGER
+
+    IF url$ = "" THEN
+        IF client THEN CLOSE client: client = 0
+        prevUrl$ = ""
+        EXIT SUB
+    END IF
+
+    IF url$ <> prevUrl$ THEN
+        prevUrl$ = url$
+        a$ = ""
+        url2$ = url$
+        x = INSTR(url2$, "/")
+        IF x THEN url2$ = LEFT$(url$, x - 1)
+        IF url2$ <> prevUrl2$ THEN
+            prevUrl2$ = url2$
+            IF client THEN CLOSE client: client = 0
+            client = _OPENCLIENT("TCP/IP:80:" + url2$)
+            IF client = 0 THEN Download = 2: prevUrl$ = "": EXIT FUNCTION
+        END IF
+        e$ = CHR$(13) + CHR$(10) ' end of line characters
+        url3$ = RIGHT$(url$, LEN(url$) - x + 1)
+        x$ = "GET " + url3$ + " HTTP/1.1" + e$
+        x$ = x$ + "Host: " + url2$ + e$ + e$
+        PUT #client, , x$
+        t! = TIMER ' start time
+    END IF
+
+    GET #client, , a2$
+    a$ = a$ + a2$
+    i = INSTR(a$, "Content-Length:")
+    IF i THEN
+        i2 = INSTR(i, a$, e$)
+        IF i2 THEN
+            l = VAL(MID$(a$, i + 15, i2 - i - 14))
+            i3 = INSTR(i2, a$, e$ + e$)
+            IF i3 THEN
+                i3 = i3 + 4 'move i3 to start of data
+                IF (LEN(a$) - i3 + 1) = l THEN
+                    d$ = MID$(a$, i3, l)
+                    fh = FREEFILE
+                    Download = 0
+                    contents$ = d$
+                    prevUrl$ = ""
+                    prevUrl2$ = ""
+                    a$ = ""
+                    CLOSE client
+                    client = 0
+                    EXIT FUNCTION
+                END IF ' availabledata = l
+            END IF ' i3
+        END IF ' i2
+    END IF ' i
+    IF TIMER > t! + timelimit THEN CLOSE client: client = 0: Download = 3: prevUrl$ = "": EXIT FUNCTION
+    Download = 1 'still working
+END FUNCTION
 
