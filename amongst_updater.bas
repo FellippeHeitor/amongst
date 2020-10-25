@@ -10,13 +10,14 @@ DIM newContents$
 
 localFile$ = COMMAND$
 IF LEFT$(localFile$, 2) = "./" THEN localFile$ = MID$(localFile$, 3)
+PRINT localFile$
 IF _FILEEXISTS(localFile$) = false THEN
     PRINT "Incorrect usage."
     SYSTEM
 ELSE
     PRINT "*"; localFile$; "* found;"
 END IF
-
+PRINT _OS$
 IF INSTR(_OS$, "WIN") THEN
     remoteFile$ = "server_win.exe"
 ELSEIF INSTR(_OS$, "MAC") THEN
