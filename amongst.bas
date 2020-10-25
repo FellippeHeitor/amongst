@@ -54,7 +54,8 @@ TYPE object
     state AS INTEGER
     start AS SINGLE
     duration AS SINGLE
-    color AS INTEGER
+    color AS _UNSIGNED LONG
+    fgColor AS _UNSIGNED LONG
     basicInfoSent AS _BYTE
     broadcastOffline AS _BYTE
     ping AS SINGLE
@@ -66,179 +67,56 @@ TYPE object
     b AS INTEGER
 END TYPE
 
+TYPE colorType
+    name AS STRING
+    value AS _UNSIGNED LONG
+END TYPE
+
+REDIM SHARED ui(1 TO 1) AS object, mouseDownOn AS INTEGER, uiClicked AS _BYTE
+REDIM SHARED serverList(0) AS object
+DIM SHARED focus AS INTEGER
+DIM SHARED endSignal AS STRING
+DIM SHARED mainWindow AS LONG, mapImage AS LONG, worldMapImage AS LONG
+DIM SHARED settingsScreenImage AS LONG, progressDialogImage AS LONG
+DIM SHARED scanLinesImage AS LONG
+DIM SHARED messageIcon AS LONG
 DIM SHARED particle(1000) AS object
 DIM SHARED mode AS INTEGER
 DIM SHARED totalClients AS INTEGER
 DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
-'DIM SHARED playerStream(1 TO 10) AS STRING
-DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG, r AS INTEGER, g AS INTEGER, b AS INTEGER
+DIM SHARED colors(1 TO 12) AS colorType, r AS INTEGER, g AS INTEGER, b AS INTEGER
 DIM SHARED warning(1 TO 30) AS object
 DIM SHARED chat(1 TO 14) AS object, hasUnreadMessages AS _BYTE, chatOpen AS _BYTE
-DIM idSet AS _BYTE
-DIM shipMovement AS _BYTE
-DIM i AS LONG
+DIM SHARED chosenServer$
+DIM SHARED server AS object
+DIM SHARED userName$, userColor%
+DIM SHARED exitSign AS INTEGER
+DIM idSet AS _BYTE, shipMovement AS _BYTE
 DIM serverPing AS SINGLE, currentPing AS SINGLE, waitingForPong AS _BYTE
 DIM id AS INTEGER, value$
-DIM choice AS STRING
-DIM exitSign AS INTEGER
+
 DIM target AS INTEGER
 DIM score AS LONG
+DIM i AS LONG
+DIM x AS SINGLE, y AS SINGLE
 
-DIM SHARED ui(1 TO 1) AS object, focus AS INTEGER
-
-DIM serverList(1 TO 4) AS STRING, chosenServer$
-i = 0
-i = i + 1: serverList(i) = "localhost Local host"
-i = i + 1: serverList(i) = "spriggsyspriggs.ddns.net North America"
-i = i + 1: serverList(i) = "alephc.xyz Australia"
-i = i + 1: serverList(i) = "187.94.219.178 Brazil"
-
-DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
-playerColorPalette:
-DATA 195,17,16
-DATA 14,51,196
-DATA 18,125,46
-DATA 236,84,187
-DATA 239,125,17
-DATA 248,245,91
-DATA 62,71,77
-DATA 216,225,241
-DATA 107,48,187
-DATA 112,73,28
-DATA 93,250,220
-DATA 79,240,58
-
-RESTORE playerColorPalette
-FOR i = 1 TO UBOUND(colors)
-    READ r%, g%, b%
-    colors(i) = _RGB32(r%, g%, b%)
-NEXT
-
-DIM SHARED mainWindow AS LONG
-DIM SHARED mapImage AS LONG
-DIM SHARED messageIcon AS LONG
-
 mainWindow = _NEWIMAGE(windowWidth, windowHeight, 32)
+SCREEN mainWindow
+DO UNTIL _SCREENEXISTS: _LIMIT 10: LOOP
+_TITLE "Amongst"
+_PRINTMODE _KEEPBACKGROUND
+_CONTROLCHR OFF
 
-mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
-_DEST mapImage
-RANDOMIZE 6
-'FOR i = 1 TO 500
-'    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 2, _RGB32(255, 80)
-'NEXT
-FOR i = 1 TO 50
-    CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
-NEXT
-_DEST 0
+readServerList
+restoreColors
+generateImages
 
-messageIcon = _NEWIMAGE(32, 32, 32)
-_DEST messageIcon
-LINE (0, 0)-(31, 31), _RGB32(0), BF
-LINE (4, 4)-(27, 27), _RGB32(200), BF
-FOR i = 8 TO 23 STEP 5
-    LINE (5, i)-(25, i), _RGB32(0)
-NEXT
-ui(1).name = "messageicon"
-ui(1).x = windowWidth - 50
-ui(1).y = 10
-ui(1).w = _WIDTH
-ui(1).h = _HEIGHT
-_DEST 0
-
-
-DIM userName$, userColor%
-IF _FILEEXISTS(COMMAND$) THEN
-    OPEN COMMAND$ FOR BINARY AS #1
-    GET #1, , i
-    userName$ = SPACE$(i)
-    GET #1, , userName$
-    GET #1, , userColor%
-    CLOSE #1
-    choice = "1"
-    GOTO clientTemp
-ELSE
-    INPUT "Name: ", userName$
-    userName$ = LEFT$(userName$, 20)
-    DO
-        PRINT "Color (1-"; LTRIM$(STR$(UBOUND(colors))); "): ";
-        INPUT "", userColor%
-    LOOP WHILE userColor% < 1 OR userColor% > UBOUND(colors)
-END IF
-
+intro
 start:
-DO
-    COLOR 15
-    PRINT "-------------------------"
-    PRINT "(1) Free play"
-    PRINT "(2) Connect to server"
-
-    DO
-        choice = INKEY$
-
-        exitSign = _EXIT
-        IF exitSign THEN
-            SYSTEM
-        END IF
-
-        _LIMIT 30
-    LOOP UNTIL choice >= "1" AND choice <= "3"
-
-    DIM SHARED server AS object
-    DIM c AS INTEGER, attempt AS INTEGER
-    SELECT CASE VAL(choice)
-        CASE 1
-            mode = mode_freeplay
-            EXIT DO
-        CASE 2
-            COLOR 7
-            PRINT "Choose a server: "
-            FOR i = 1 TO UBOUND(serverList)
-                PRINT i; " " + MID$(serverList(i), INSTR(serverList(i), " ") + 1)
-            NEXT
-            DO
-                choice = INKEY$
-
-                exitSign = _EXIT
-                IF exitSign THEN
-                    SYSTEM
-                END IF
-
-                _LIMIT 30
-            LOOP UNTIL VAL(choice) >= 1 AND VAL(choice) <= UBOUND(serverList)
-            clientTemp:
-            chosenServer$ = LEFT$(serverList(VAL(choice)), INSTR(serverList(VAL(choice)), " ") - 1)
-
-            PRINT "Attempting to connect to server... ";
-            r = CSRLIN: c = POS(1)
-            CONST maxAttempts = 100
-            attempt = 0
-            DO
-                server.handle = 0
-                server.handle = _OPENCLIENT("TCP/IP:51512:" + chosenServer$)
-                IF server.handle THEN EXIT DO
-                attempt = attempt + 1
-                LOCATE r, c: PRINT USING "###%"; (attempt / maxAttempts) * 100;
-
-                exitSign = _EXIT
-                IF exitSign THEN
-                    SYSTEM
-                END IF
-
-                _LIMIT 30
-            LOOP WHILE attempt < maxAttempts
-            IF server.handle THEN
-                mode = mode_onlineclient
-                serverStream = ""
-                EXIT DO
-            END IF
-            CLS
-            COLOR 14: PRINT "/\ ";: COLOR 12
-            PRINT "Failed to connect to server."
-    END SELECT
-LOOP
+settingsScreen
 
 IF mode = mode_onlineclient THEN
     serverPing = TIMER
@@ -248,14 +126,14 @@ IF mode = mode_onlineclient THEN
             SELECT CASE id
                 CASE id_SERVERFULL
                     CLS
-                    COLOR 14: PRINT "/\ ";: COLOR 12
+                    COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
                     PRINT "Server full."
                     CLOSE server.handle
                     GOTO start
                 CASE id_GAMEVERSION
                     IF CVI(value$) <> gameVersion THEN
                         CLS
-                        COLOR 14: PRINT "/\ ";: COLOR 12
+                        COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
                         PRINT "Server version incompatible."
                         sendData server, id_GAMEVERSION, ""
                         sendData server, id_PLAYERQUIT, ""
@@ -268,7 +146,7 @@ IF mode = mode_onlineclient THEN
         WEND
         IF TIMER - serverPing > 10 THEN
             CLS
-            COLOR 14: PRINT "/\ ";: COLOR 12
+            COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
             PRINT "No response from server."
             GOTO start
         END IF
@@ -276,7 +154,6 @@ IF mode = mode_onlineclient THEN
     LOOP
 END IF
 
-SCREEN mainWindow
 _FONT 8
 _PRINTMODE _KEEPBACKGROUND
 
@@ -298,6 +175,9 @@ CONST maxSpeed = 5
 
 playerSpeed = maxSpeed
 shipMovement = True
+
+uiReset
+i = addUiItem("messageicon", windowWidth - 50, 10, _WIDTH(messageIcon), _HEIGHT(messageIcon))
 
 IF mode > 0 THEN
     idSet = False
@@ -366,7 +246,7 @@ DO
                         target = CVI(RIGHT$(value$, 2))
                         IF target = me THEN score = score - 100
                         addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                        addParticles player(target).x, player(target).y, 100, colors(player(target).color)
+                        addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
                         thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
                     CASE id_PLAYERONLINE
                         player(CVI(value$)).state = True
@@ -378,11 +258,9 @@ DO
                     CASE id_PONG
                         waitingForPong = False
                     CASE id_KICK
-                        SCREEN 0
-                        _AUTODISPLAY
-                        COLOR 14: PRINT "/\ ";: COLOR 12
+                        COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
                         PRINT "Kicked from server. Reason: "
-                        COLOR 14
+                        COLOR _RGB32(200, 172, 44)
                         PRINT "   "; value$
                         CLOSE server.handle
                         GOTO start
@@ -449,9 +327,8 @@ DO
         DIM m$
         currentPing = TIMER - serverPing
         IF currentPing > timeout THEN
-            SCREEN 0
-            _AUTODISPLAY
-            COLOR 14: PRINT "/\ ";: COLOR 12
+            CLS
+            COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
             PRINT "Connection lost (timed out)"
             CLOSE server.handle
             GOTO start
@@ -467,12 +344,17 @@ DO
         _FONT 8
     END IF
 
-    DIM x AS SINGLE, y AS SINGLE
     target = 0
+    DIM testDist AS SINGLE, closest AS SINGLE
+    closest = _WIDTH
     FOR i = 1 TO UBOUND(player)
         'proximity
         IF i <> me AND player(i).state = True THEN
-            IF dist(player(me).x, player(me).y, player(i).x, player(i).y) < 150 THEN target = i
+            testDist = dist(player(me).x, player(me).y, player(i).x, player(i).y)
+            IF testDist < 150 AND testDist < closest THEN
+                closest = testDist
+                target = i
+            END IF
         END IF
     NEXT
 
@@ -499,7 +381,7 @@ DO
         y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
         CircleFill x, y + 6, player(i).size + 5, _RGB32(0, 50)
         CircleFill x, y, player(i).size + 5, _RGB32(0)
-        CircleFill x, y, player(i).size, colors(player(i).color)
+        CircleFill x, y, player(i).size, colors(player(i).color).value
         COLOR _RGB32(0)
         _PRINTSTRING (1 + x - _PRINTWIDTH(player(i).name) / 2, 1 + y - 20), player(i).name
         COLOR _RGB32(255)
@@ -514,7 +396,7 @@ DO
                 score = score + 100
                 sendData server, id_SHOOT, MKI$(target)
                 addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                addParticles player(target).x, player(target).y, 100, colors(player(target).color)
+                addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
                 thickLine player(me).x + camera.x, player(me).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
             END IF
         END IF
@@ -558,7 +440,7 @@ DO
                     IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).name)
                     COLOR _RGB32(100)
                     _PRINTSTRING (1 + x, 1 + y - 8), chat(i).name
-                    COLOR colors(chat(i).color)
+                    COLOR colors(chat(i).color).value
                     _PRINTSTRING (x, y - 8), chat(i).name
                     _FONT 16
                     x = 60
@@ -637,44 +519,13 @@ DO
         END IF
     END IF
 
-    DIM mouseIsDown AS _BYTE, mouseDownOn AS INTEGER, mouseWheel AS INTEGER
-    DIM mb1 AS _BYTE, mb2 AS _BYTE, mx AS INTEGER, my AS INTEGER
-    mouseWheel = 0
-    IF _MOUSEINPUT THEN
-        mouseWheel = mouseWheel + _MOUSEWHEEL
-        IF _MOUSEBUTTON(1) = mb1 AND _MOUSEBUTTON(2) = mb2 THEN
-            DO WHILE _MOUSEINPUT
-                mouseWheel = mouseWheel + _MOUSEWHEEL
-                IF NOT (_MOUSEBUTTON(1) = mb1 AND _MOUSEBUTTON(2) = mb2) THEN EXIT DO
-            LOOP
-        END IF
-        mb1 = _MOUSEBUTTON(1)
-        mb2 = _MOUSEBUTTON(2)
-        mx = _MOUSEX
-        my = _MOUSEY
-    END IF
-
-    focus = 0
-    FOR i = UBOUND(ui) TO 1 STEP -1
-        IF mx > ui(i).x AND mx < ui(i).x + ui(i).w AND my > ui(i).y AND my < ui(i).y + ui(i).h THEN
-            focus = i
-            EXIT FOR
-        END IF
-    NEXT
-
-    IF mb1 THEN
-        mouseDownOn = focus
-        mouseIsDown = True
-    ELSE
-        IF mouseIsDown THEN
-            IF mouseDownOn THEN
-                SELECT CASE ui(mouseDownOn).name
-                    CASE "messageicon"
-                        IF mode = mode_onlineclient THEN chatOpen = NOT chatOpen
-                END SELECT
-            END IF
-        END IF
-        mouseIsDown = False
+    uiCheck
+    IF uiClicked THEN
+        SELECT CASE ui(mouseDownOn).name
+            CASE "messageicon"
+                IF mode = mode_onlineclient THEN chatOpen = NOT chatOpen
+        END SELECT
+        uiClicked = False
     END IF
 
     IF mode = mode_onlineclient THEN
@@ -878,3 +729,607 @@ FUNCTION map! (value!, minRange!, maxRange!, newMinRange!, newMaxRange!)
     map! = ((value! - minRange!) / (maxRange! - minRange!)) * (newMaxRange! - newMinRange!) + newMinRange!
 END FUNCTION
 
+
+SUB generateImages
+    DIM i AS LONG, j AS LONG
+    DIM x AS INTEGER, y AS INTEGER
+
+    settingsScreenImage = _NEWIMAGE(windowWidth, windowHeight, 32)
+    _DEST settingsScreenImage
+    FOR i = 1 TO 50
+        CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 80, RND * 150)
+    NEXT
+    _DEST 0
+
+    worldMapImage = _NEWIMAGE(800, 351, 32)
+    _DEST worldMapImage
+    RESTORE worldMapData
+    READ j
+    FOR i = 1 TO j
+        READ x, y
+        PSET (x, y), _RGB32(0, 177, 0)
+    NEXT
+    _DEST 0
+
+    scanLinesImage = _NEWIMAGE(60, 100, 32)
+    _DEST scanLinesImage
+    FOR i = 0 TO _WIDTH / 2
+        LINE (i, 3)-(i, _HEIGHT - 4), _RGB32(0, 139, 0, map(i, 0, _WIDTH / 2, 0, 127))
+    NEXT
+    FOR i = _WIDTH / 2 + 1 TO _WIDTH
+        LINE (i, 3)-(i, _HEIGHT - 4), _RGB32(0, 139, 0, map(i, _WIDTH / 2 + 1, _WIDTH, 127, 0))
+    NEXT
+    _DEST 0
+
+    progressDialogImage = _NEWIMAGE(500, 100, 32)
+    _DEST progressDialogImage
+    LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0, 30), BF
+    LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0, 139, 0), B
+    LINE (2, 2)-(_WIDTH - 3, _HEIGHT - 3), _RGB32(0, 139, 0), B
+    FOR i = 4 TO _HEIGHT - 5 STEP 2
+        LINE (3, i)-(_WIDTH - 4, i), _RGB32(0, 139, 0, 60)
+    NEXT
+    _DEST 0
+
+    mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
+    _DEST mapImage
+    RANDOMIZE 6
+    FOR i = 1 TO 15
+        CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
+    NEXT
+    _DEST 0
+
+    messageIcon = _NEWIMAGE(32, 32, 32)
+    _DEST messageIcon
+    LINE (0, 0)-(31, 31), _RGB32(0), BF
+    LINE (4, 4)-(27, 27), _RGB32(200), BF
+    FOR i = 8 TO 23 STEP 5
+        LINE (5, i)-(25, i), _RGB32(0)
+    NEXT
+    _DEST 0
+
+    worldMapData:
+    DATA 1075
+    DATA 251,6,276,6,279,6,287,6,302,6,336,6,212,12,213,12,215,12,216,12,220,12,221,12
+    DATA 223,12,224,12,227,12,239,12,240,12,263,12,271,12,339,12,397,12,398,12,430,12,438,12
+    DATA 441,12,457,12,458,12,461,12,479,12,481,12,500,12,507,12,181,18,191,18,205,18,207,18
+    DATA 208,18,215,18,220,18,221,18,222,18,226,18,232,18,236,18,239,18,244,18,259,18,335,18
+    DATA 386,18,395,18,398,18,404,18,511,18,512,18,519,18,529,18,531,18,538,18,165,24,179,24
+    DATA 192,24,194,24,203,24,208,24,211,24,218,24,222,24,227,24,230,24,235,24,236,24,239,24
+    DATA 275,24,328,24,454,24,461,24,495,24,538,24,541,24,547,24,553,24,555,24,592,24,595,24
+    DATA 96,30,97,30,99,30,112,30,113,30,114,30,168,30,192,30,203,30,210,30,217,30,246,30
+    DATA 274,30,277,30,278,30,322,30,324,30,328,30,403,30,408,30,409,30,414,30,453,30,460,30
+    DATA 475,30,486,30,487,30,623,30,626,30,630,30,662,30,668,30,79,36,166,36,171,36,175,36
+    DATA 179,36,188,36,191,36,195,36,196,36,197,36,199,36,212,36,215,36,223,36,232,36,236,36
+    DATA 238,36,250,36,272,36,307,36,390,36,433,36,439,36,444,36,448,36,489,36,492,36,679,36
+    DATA 67,42,207,42,208,42,210,42,211,42,215,42,224,42,245,42,250,42,251,42,272,42,291,42
+    DATA 323,42,339,42,385,42,402,42,407,42,425,42,426,42,428,42,429,42,431,42,435,42,683,42
+    DATA 687,42,688,42,689,42,697,42,61,48,149,48,151,48,195,48,209,48,214,48,222,48,223,48
+    DATA 224,48,225,48,236,48,242,48,272,48,286,48,351,48,354,48,375,48,395,48,401,48,689,48
+    DATA 59,54,76,54,77,54,81,54,99,54,185,54,217,54,233,54,240,54,242,54,373,54,401,54
+    DATA 413,54,414,54,415,54,651,54,664,54,671,54,57,60,62,60,66,60,71,60,102,60,186,60
+    DATA 215,60,243,60,349,60,357,60,380,60,382,60,385,60,393,60,395,60,397,60,403,60,407,60
+    DATA 408,60,629,60,662,60,674,60,30,66,35,66,36,66,37,66,106,66,201,66,207,66,248,66
+    DATA 345,66,353,66,354,66,359,66,378,66,382,66,387,66,388,66,396,66,397,66,401,66,627,66
+    DATA 665,66,678,66,682,66,684,66,685,66,687,66,105,72,163,72,164,72,198,72,204,72,250,72
+    DATA 341,72,349,72,352,72,365,72,370,72,642,72,644,72,646,72,672,72,677,72,712,72,714,72
+    DATA 102,78,107,78,108,78,224,78,230,78,233,78,244,78,248,78,356,78,358,78,363,78,647,78
+    DATA 649,78,654,78,674,78,676,78,103,84,172,84,176,84,179,84,185,84,226,84,227,84,228,84
+    DATA 233,84,235,84,243,84,245,84,246,84,252,84,354,84,647,84,652,84,656,84,675,84,676,84
+    DATA 100,90,176,90,180,90,186,90,189,90,190,90,192,90,219,90,221,90,231,90,246,90,247,90
+    DATA 357,90,385,90,388,90,422,90,430,90,435,90,438,90,459,90,467,90,484,90,487,90,647,90
+    DATA 656,90,659,90,670,90,674,90,95,96,173,96,174,96,175,96,176,96,187,96,190,96,209,96
+    DATA 340,96,366,96,378,96,380,96,383,96,390,96,399,96,420,96,448,96,462,96,470,96,639,96
+    DATA 657,96,665,96,90,102,91,102,92,102,201,102,289,102,290,102,292,102,295,102,340,102
+    DATA 360,102,367,102,369,102,377,102,381,102,392,102,400,102,401,102,408,102,409,102,411,102
+    DATA 414,102,415,102,416,102,467,102,473,102,619,102,622,102,638,102,660,102,665,102,93,108
+    DATA 195,108,340,108,358,108,387,108,393,108,404,108,409,108,410,108,415,108,417,108,466,108
+    DATA 477,108,617,108,631,108,641,108,662,108,666,108,93,114,191,114,317,114,318,114,346,114
+    DATA 349,114,357,114,384,114,390,114,391,114,410,114,412,114,431,114,435,114,437,114,622,114
+    DATA 637,114,644,114,652,114,667,114,98,120,182,120,214,120,216,120,339,120,387,120,437,120
+    DATA 626,120,640,120,641,120,646,120,658,120,98,126,101,126,105,126,176,126,336,126,399,126
+    DATA 403,126,631,126,672,126,673,126,101,132,104,132,107,132,141,132,172,132,177,132,312,132
+    DATA 314,132,316,132,318,132,320,132,321,132,323,132,325,132,332,132,433,132,434,132,468,132
+    DATA 474,132,632,132,673,132,674,132,103,138,106,138,110,138,137,138,173,138,176,138,181,138
+    DATA 182,138,326,138,437,138,441,138,471,138,472,138,474,138,482,138,484,138,485,138,487,138
+    DATA 488,138,630,138,5,144,6,144,105,144,108,144,114,144,135,144,186,144,187,144,322,144
+    DATA 440,144,445,144,491,144,513,144,627,144,632,144,636,144,11,150,14,150,116,150,136,150
+    DATA 152,150,159,150,167,150,169,150,176,150,184,150,193,150,197,150,319,150,443,150,448,150
+    DATA 494,150,517,150,558,150,562,150,564,150,567,150,568,150,569,150,604,150,608,150,613,150
+    DATA 91,156,92,156,118,156,138,156,147,156,156,156,160,156,161,156,177,156,178,156,182,156
+    DATA 183,156,186,156,188,156,190,156,200,156,208,156,209,156,321,156,445,156,449,156,450,156
+    DATA 452,156,490,156,525,156,554,156,572,156,602,156,608,156,612,156,614,156,615,156,99,162
+    DATA 100,162,128,162,154,162,155,162,157,162,162,162,163,162,167,162,168,162,216,162,218,162
+    DATA 219,162,220,162,306,162,307,162,320,162,448,162,453,162,454,162,457,162,481,162,527,162
+    DATA 548,162,577,162,607,162,635,162,641,162,145,168,164,168,193,168,194,168,217,168,218,168
+    DATA 319,168,454,168,457,168,472,168,481,168,482,168,530,168,544,168,584,168,611,168,637,168
+    DATA 641,168,690,168,693,168,156,174,159,174,160,174,164,174,188,174,192,174,194,174,196,174
+    DATA 198,174,199,174,213,174,214,174,215,174,216,174,270,174,271,174,320,174,458,174,461,174
+    DATA 462,174,475,174,477,174,481,174,482,174,532,174,543,174,575,174,577,174,584,174,585,174
+    DATA 587,174,590,174,593,174,594,174,596,174,612,174,636,174,637,174,642,174,643,174,644,174
+    DATA 646,174,647,174,650,174,161,180,166,180,168,180,169,180,173,180,174,180,181,180,190,180
+    DATA 192,180,214,180,220,180,221,180,222,180,223,180,326,180,476,180,535,180,542,180,544,180
+    DATA 546,180,584,180,585,180,586,180,589,180,602,180,606,180,633,180,635,180,643,180,651,180
+    DATA 707,180,708,180,109,186,110,186,176,186,221,186,329,186,473,186,475,186,476,186,523,186
+    DATA 524,186,541,186,542,186,544,186,549,186,579,186,581,186,590,186,593,186,629,186,630,186
+    DATA 642,186,644,186,646,186,653,186,670,186,672,186,724,186,727,186,758,186,760,186,177,192
+    DATA 236,192,337,192,344,192,370,192,470,192,523,192,525,192,580,192,586,192,592,192,599,192
+    DATA 624,192,636,192,174,198,239,198,380,198,466,198,522,198,525,198,581,198,583,198,586,198
+    DATA 593,198,594,198,601,198,613,198,614,198,618,198,633,198,656,198,659,198,9,204,10,204
+    DATA 15,204,16,204,147,204,148,204,170,204,243,204,247,204,248,204,376,204,377,204,379,204
+    DATA 433,204,437,204,459,204,461,204,462,204,522,204,524,204,589,204,599,204,612,204,633,204
+    DATA 637,204,640,204,645,204,648,204,655,204,658,204,663,204,665,204,62,210,63,210,169,210
+    DATA 254,210,255,210,256,210,301,210,302,210,380,210,454,210,591,210,592,210,594,210,603,210
+    DATA 604,210,606,210,615,210,630,210,631,210,632,210,636,210,643,210,652,210,653,210,666,210
+    DATA 672,210,675,210,685,210,699,210,701,210,168,216,270,216,274,216,275,216,276,216,277,216
+    DATA 385,216,425,216,426,216,450,216,598,216,606,216,612,216,613,216,621,216,622,216,636,216
+    DATA 639,216,641,216,645,216,675,216,698,216,712,216,715,216,172,222,277,222,279,222,280,222
+    DATA 387,222,427,222,428,222,449,222,603,222,613,222,614,222,621,222,633,222,634,222,681,222
+    DATA 703,222,708,222,709,222,717,222,720,222,721,222,723,222,174,228,275,228,388,228,450,228
+    DATA 482,228,483,228,624,228,625,228,637,228,638,228,646,228,651,228,653,228,654,228,688,228
+    DATA 691,228,699,228,705,228,729,228,731,228,734,228,735,228,774,228,775,228,177,234,271,234
+    DATA 389,234,437,234,438,234,452,234,661,234,668,234,688,234,690,234,713,234,716,234,728,234
+    DATA 729,234,181,240,268,240,386,240,453,240,461,240,463,240,469,240,474,240,642,240,643,240
+    DATA 650,240,653,240,655,240,656,240,658,240,672,240,684,240,685,240,686,240,693,240,791,240
+    DATA 795,240,189,246,268,246,344,246,346,246,385,246,450,246,460,246,473,246,474,246,475,246
+    DATA 501,246,502,246,641,246,642,246,644,246,676,246,677,246,678,246,684,246,695,246,744,246
+    DATA 747,246,788,246,789,246,196,252,267,252,386,252,442,252,459,252,471,252,635,252,636,252
+    DATA 638,252,695,252,733,252,734,252,746,252,747,252,193,258,194,258,197,258,265,258,390,258
+    DATA 438,258,458,258,469,258,485,258,487,258,625,258,700,258,735,258,738,258,739,258,740,258
+    DATA 741,258,743,258,197,264,256,264,391,264,440,264,457,264,468,264,617,264,703,264,198,270
+    DATA 248,270,392,270,433,270,467,270,468,270,617,270,706,270,197,276,248,276,249,276,250,276
+    DATA 394,276,433,276,458,276,459,276,462,276,463,276,616,276,705,276,198,282,247,282,397,282
+    DATA 427,282,617,282,702,282,199,288,242,288,399,288,421,288,616,288,638,288,656,288,698,288
+    DATA 737,288,738,288,199,294,233,294,658,294,659,294,660,294,692,294,740,294,743,294,746,294
+    DATA 747,294,199,300,235,300,665,300,687,300,738,300,739,300,740,300,744,300,200,306,226,306
+    DATA 480,306,481,306,669,306,670,306,735,306,742,306,205,312,223,312,669,312,676,312,724,312
+    DATA 731,312,96,318,97,318,206,318,221,318,389,318,390,318,711,318,721,318,207,324,223,324
+    DATA 536,324,538,324,707,324,709,324,209,330,223,330,215,336,223,336,238,336,242,336,222,342
+END SUB
+
+SUB restoreColors
+    DIM i AS INTEGER
+
+    playerColorPalette:
+    DATA 195,17,16,Red
+    DATA 14,51,196,Blue
+    DATA 18,125,46,Green
+    DATA 236,84,187,Pink
+    DATA 239,125,17,Orange
+    DATA 248,245,91,Yellow
+    DATA 62,71,77,Black
+    DATA 216,225,241,White
+    DATA 107,48,187,Purple
+    DATA 112,73,28,Brown
+    DATA 93,250,220,Cyan
+    DATA 79,240,58,Lime
+
+    RESTORE playerColorPalette
+    FOR i = 1 TO UBOUND(colors)
+        READ r%, g%, b%, colors(i).name
+        colors(i).value = _RGB32(r%, g%, b%)
+    NEXT
+END SUB
+
+SUB readServerList
+    RESTORE serverList
+    DIM i AS INTEGER
+    READ i
+    REDIM serverList(1 TO i) AS object
+    FOR i = 1 TO i
+        READ serverList(i).text, serverList(i).name, serverList(i).x, serverList(i).y
+    NEXT
+
+    serverList:
+    DATA 3
+    DATA spriggsyspriggs.ddns.net,North America,145,105
+    DATA alephc.xyz,Australia,662,270
+    DATA 187.94.219.178,Brazil,240,233
+END SUB
+
+SUB intro
+
+END SUB
+
+SUB settingsScreen
+    DIM i AS LONG
+    DIM x AS INTEGER, y AS INTEGER
+    DIM item AS LONG, itemX AS INTEGER, itemY AS INTEGER
+    DIM text AS STRING, choice AS STRING
+    DIM errorLabel AS INTEGER
+    DIM dummyPlayer AS object
+    DIM attemptingToConnect AS _BYTE
+
+    GOSUB setUi
+    CONST mapX = 0, mapY = 240
+
+    DO
+        IF NOT attemptingToConnect THEN uiCheck
+
+        DIM shipFlotation AS SINGLE, shipFloatAmplitude AS SINGLE
+        shipFlotation = shipFlotation + .05
+        IF shipFlotation > _PI(2) THEN shipFlotation = shipFlotation - _PI(2)
+        shipFloatAmplitude = 1.5
+
+        _DONTBLEND
+        _PUTIMAGE (COS(shipFlotation) * shipFloatAmplitude, SIN(shipFlotation) * shipFloatAmplitude), settingsScreenImage
+        _BLEND
+
+        x = dummyPlayer.x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+        y = dummyPlayer.y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
+        CircleFill x, y + 6, dummyPlayer.size + 5, _RGB32(0, 50)
+        CircleFill x, y, dummyPlayer.size + 5, _RGB32(0)
+        CircleFill x, y, dummyPlayer.size, colors(dummyPlayer.color).value
+        text = dummyPlayer.name + "_"
+        _FONT 8
+        COLOR _RGB32(0)
+        _PRINTSTRING (1 + x - _PRINTWIDTH(text) / 2, 1 + y - 20), text
+        COLOR _RGB32(255)
+        _PRINTSTRING (x - _PRINTWIDTH(text) / 2, y - 20), text
+        _FONT 16
+
+        DIM targetAnimation AS SINGLE
+        targetAnimation = targetAnimation - .1
+        IF targetAnimation < 0 THEN targetAnimation = 5
+
+        FOR i = 1 TO UBOUND(colors)
+            IF dummyPlayer.color = i THEN
+                ui(i + 1).text = "*"
+            ELSE
+                ui(i + 1).text = ""
+            END IF
+        NEXT
+
+        FOR i = 1 TO UBOUND(serverlist)
+            x = serverList(i).x + mapX
+            y = serverList(i).y + mapY
+            CircleFill x, y, 15 + targetAnimation, _RGB32(255, 0, 0, 100)
+        NEXT
+
+        uiDisplay
+
+        _PUTIMAGE (mapX, mapY), worldMapImage
+
+        COLOR _RGB32(255)
+        IF uiClicked THEN
+            SELECT CASE LEFT$(ui(mouseDownOn).name, INSTR(ui(mouseDownOn).name, ".") - 1)
+                CASE "color"
+                    dummyPlayer.color = CVI(RIGHT$(ui(mouseDownOn).name, 2))
+                CASE "freeplay"
+                    mode = mode_freeplay
+                    userName$ = dummyPlayer.name
+                    IF userName$ = "" THEN userName$ = "Player"
+                    userColor% = dummyPlayer.color
+                    EXIT SUB
+                CASE "server"
+                    attemptingToConnect = True
+                    userName$ = dummyPlayer.name
+                    IF userName$ = "" THEN userName$ = "Player"
+                    userColor% = dummyPlayer.color
+                    CONST maxAttempts = 100
+                    DIM attempt AS INTEGER
+                    attempt = 0
+                    chosenServer$ = serverList(CVI(RIGHT$(ui(mouseDownOn).name, 2))).text
+            END SELECT
+        END IF
+
+        IF attemptingToConnect THEN
+            attempt = attempt + 1
+            progressDialog "Attempting to connect to server..." + STR$(INT((attempt / maxAttempts) * 100)) + "%"
+            IF attempt = 1 THEN _DISPLAY
+
+            server.handle = 0
+            server.handle = _OPENCLIENT("TCP/IP:51512:" + chosenServer$)
+            IF server.handle THEN
+                mode = mode_onlineclient
+                serverStream = ""
+                EXIT SUB
+            END IF
+
+            IF attempt >= maxAttempts THEN
+                attemptingToConnect = False
+                'IF errorLabel = 0 THEN errorLabel = addUiItem("errorlabel", 0, 0, 0, 0)
+                'ui(errorLabel).text = "Failed to connect to server."
+            END IF
+        ELSE
+            DIM char$
+            char$ = INKEY$
+            SELECT CASE char$
+                CASE " " TO "z"
+                    IF LEN(dummyPlayer.name) < 20 THEN dummyPlayer.name = dummyPlayer.name + char$
+                CASE CHR$(8)
+                    IF LEN(dummyPlayer.name) THEN
+                        dummyPlayer.name = LEFT$(dummyPlayer.name, LEN(dummyPlayer.name) - 1)
+                    END IF
+                CASE CHR$(27)
+                    dummyPlayer.name = ""
+            END SELECT
+        END IF
+
+        exitSign = _EXIT
+        IF exitSign THEN
+            SYSTEM
+        END IF
+
+        _DISPLAY
+        _LIMIT 60
+    LOOP
+
+    DO
+        CLS
+        _PUTIMAGE (0, _HEIGHT - (_HEIGHT(worldMapImage))), worldMapImage
+
+        IF _FILEEXISTS(COMMAND$) THEN
+            OPEN COMMAND$ FOR BINARY AS #1
+            GET #1, , i
+            userName$ = SPACE$(i)
+            GET #1, , userName$
+            GET #1, , userColor%
+            CLOSE #1
+            choice = "1"
+            GOTO clientTemp
+        ELSE
+            INPUT "Name: ", userName$
+            userName$ = LEFT$(userName$, 20)
+            DO
+                PRINT "Color (1-"; LTRIM$(STR$(UBOUND(colors))); "): ";
+                INPUT "", userColor%
+            LOOP WHILE userColor% < 1 OR userColor% > UBOUND(colors)
+        END IF
+
+        _AUTODISPLAY
+        _PUTIMAGE (0, _HEIGHT - (_HEIGHT(worldMapImage))), worldMapImage
+        DO
+            COLOR _RGB32(255)
+            PRINT "-------------------------"
+            PRINT "(1) Free play"
+            PRINT "(2) Connect to server"
+
+            DO
+                choice = INKEY$
+
+                exitSign = _EXIT
+                IF exitSign THEN
+                    SYSTEM
+                END IF
+
+                _LIMIT 30
+            LOOP UNTIL choice >= "1" AND choice <= "3"
+
+            SELECT CASE VAL(choice)
+                CASE 1
+                    mode = mode_freeplay
+                    EXIT SUB
+                CASE 2
+                    COLOR _RGB32(180)
+                    PRINT "Choose a server: "
+                    FOR i = 1 TO UBOUND(serverList)
+                        PRINT i; " " + MID$(serverList(i).text, INSTR(serverList(i).text, " ") + 1)
+                    NEXT
+                    DO
+                        choice = INKEY$
+
+                        exitSign = _EXIT
+                        IF exitSign THEN
+                            SYSTEM
+                        END IF
+
+                        _LIMIT 30
+                    LOOP UNTIL VAL(choice) >= 1 AND VAL(choice) <= UBOUND(serverList)
+                    clientTemp:
+            END SELECT
+        LOOP
+    LOOP
+
+    EXIT SUB
+
+    setUi:
+    uiReset
+
+    'color picker
+    CONST colorPickerSquareSize = 35
+    itemX = 200
+    itemY = 50
+
+    item = addUiItem("colorpickerframe", itemX - 4, itemY - 4, colorPickerSquareSize * 3 + 8, colorPickerSquareSize * 4 + 8)
+    ui(item).color = _RGB32(50)
+
+    y = 1
+    x = 0
+    FOR i = 1 TO UBOUND(colors)
+        x = x + 1
+        IF x = 4 THEN y = y + 1: x = 1
+        item = addUiItem("color." + LCASE$(colors(i).name) + "." + MKI$(i), itemX + (colorPickerSquareSize * (x - 1)), itemY + (colorPickerSquareSize * (y - 1)), colorPickerSquareSize - 2, colorPickerSquareSize - 2)
+        ui(item).color = colors(i).value
+        ui(item).fgColor = _RGB32(255)
+        ui(item).state = True
+    NEXT
+
+    'server locations
+    CONST mapLocationsPickerSize = 16
+    FOR i = 1 TO UBOUND(serverlist)
+        itemX = mapX + serverList(i).x - mapLocationsPickerSize / 2
+        itemY = mapY + serverList(i).y - mapLocationsPickerSize / 2
+        item = addUiItem("server." + LCASE$(serverList(i).name) + "." + MKI$(i), itemX, itemY, mapLocationsPickerSize, mapLocationsPickerSize)
+        ui(item).color = _RGB32(105, 200, 50)
+        ui(item).state = True
+    NEXT
+
+    'interface
+    itemY = _FONTHEIGHT
+    item = addUiItem("titleseparator", 0, itemY, _WIDTH, 2)
+    ui(item).color = _RGB32(200)
+    ui(item).fgColor = _RGB32(0)
+
+    item = addUiItem("titlelabel", 0, 0, 0, 0)
+    ui(item).text = "AMONGST... WHO IS THE IMPOSTOR?"
+    ui(item).w = _PRINTWIDTH(ui(item).text) + 30
+    ui(item).h = _FONTHEIGHT * 2
+    ui(item).x = (_WIDTH - ui(item).w) / 2
+    ui(item).y = itemY - _FONTHEIGHT
+    ui(item).color = _RGB32(200)
+    ui(item).fgColor = _RGB32(0)
+
+    itemX = 500
+    itemY = 100
+    text$ = "Free Play - local host"
+    item = addUiItem("freeplay.", itemX, itemY, _PRINTWIDTH(text$) + 30, _FONTHEIGHT * 2)
+    ui(item).text = text$
+    ui(item).color = _RGB32(200)
+    ui(item).fgColor = _RGB32(0)
+    ui(item).state = True
+
+    itemY = 220 - _FONTHEIGHT
+    item = addUiItem("mapseparator", 0, itemY + _FONTHEIGHT, _WIDTH, 2)
+    ui(item).color = _RGB32(200)
+    ui(item).fgColor = _RGB32(0)
+
+    item = addUiItem("serverlabel", 0, 0, 0, 0)
+    ui(item).text = "Play online - Choose a server"
+    ui(item).w = _PRINTWIDTH(ui(item).text) + 30
+    ui(item).h = _FONTHEIGHT * 2
+    ui(item).x = (_WIDTH - ui(item).w) / 2
+    ui(item).y = itemY
+    ui(item).color = _RGB32(200)
+    ui(item).fgColor = _RGB32(0)
+
+    dummyPlayer.x = 100
+    dummyPlayer.y = 120
+    dummyPlayer.size = 15
+    dummyPlayer.color = 1
+    dummyPlayer.name = "Player 1"
+    RETURN
+END SUB
+
+SUB uiCheck
+    STATIC mouseIsDown AS _BYTE, mouseWheel AS INTEGER
+    STATIC mb1 AS _BYTE, mb2 AS _BYTE, mx AS INTEGER, my AS INTEGER
+    DIM i AS INTEGER
+
+    mouseWheel = 0
+    IF _MOUSEINPUT THEN
+        mouseWheel = mouseWheel + _MOUSEWHEEL
+        IF _MOUSEBUTTON(1) = mb1 AND _MOUSEBUTTON(2) = mb2 THEN
+            DO WHILE _MOUSEINPUT
+                mouseWheel = mouseWheel + _MOUSEWHEEL
+                IF NOT (_MOUSEBUTTON(1) = mb1 AND _MOUSEBUTTON(2) = mb2) THEN EXIT DO
+            LOOP
+        END IF
+        mb1 = _MOUSEBUTTON(1)
+        mb2 = _MOUSEBUTTON(2)
+        mx = _MOUSEX
+        my = _MOUSEY
+    END IF
+
+    focus = 0
+    FOR i = UBOUND(ui) TO 1 STEP -1
+        IF ui(i).state AND mx > ui(i).x AND mx < ui(i).x + ui(i).w AND my > ui(i).y AND my < ui(i).y + ui(i).h THEN
+            focus = i
+            EXIT FOR
+        END IF
+    NEXT
+
+    IF mb1 THEN
+        uiClicked = False
+        mouseDownOn = focus
+        mouseIsDown = True
+    ELSE
+        IF mouseIsDown THEN
+            IF mouseDownOn THEN
+                uiClicked = True
+            END IF
+        END IF
+        mouseIsDown = False
+    END IF
+END SUB
+
+SUB uiDisplay
+    DIM i AS INTEGER, x AS INTEGER, y AS INTEGER
+    DIM tempColor AS _UNSIGNED LONG
+
+    CONST hoverIntensity = 30
+
+    FOR i = 1 TO UBOUND(ui)
+        IF i = focus THEN _CONTINUE 'draw focused clickable control last
+        GOSUB drawIt
+    NEXT
+
+    IF focus THEN
+        IF ui(focus).state THEN
+            i = focus
+            GOSUB drawIt
+        END IF
+    END IF
+    EXIT SUB
+
+    drawIt:
+    'shadow
+    IF ui(i).state THEN
+        x = ui(i).x + 4
+        y = ui(i).y + 4
+        LINE (x, y)-STEP(ui(i).w - 1 + (ABS(i = focus) * 4), ui(i).h - 1 + (ABS(i = focus) * 4)), _RGB32(0, 50), BF
+    END IF
+
+    'surface
+    IF i = focus AND ui(i).state THEN
+        tempColor = _RGB32(_RED32(ui(i).color) + hoverIntensity, _GREEN32(ui(i).color) + hoverIntensity, _BLUE32(ui(i).color) + hoverIntensity)
+        LINE (ui(i).x - 2, ui(i).y - 2)-STEP(ui(i).w - 1 + 4, ui(i).h - 1 + 4), tempColor, BF
+    ELSE
+        LINE (ui(i).x, ui(i).y)-STEP(ui(i).w - 1, ui(i).h - 1), ui(i).color, BF
+    END IF
+
+    'caption
+    IF LEN(ui(i).text) THEN
+        x = ui(i).x + ((ui(i).w - _PRINTWIDTH(ui(i).text)) / 2)
+        y = ui(i).y + ((ui(i).h - _FONTHEIGHT) / 2)
+        IF i = focus AND ui(i).state THEN
+            COLOR _RGB32(0, 50)
+            _PRINTSTRING (x + 2, y + 2), ui(i).text
+        END IF
+        COLOR ui(i).fgColor
+        _PRINTSTRING (x, y), ui(i).text
+    END IF
+    RETURN
+END SUB
+
+SUB uiReset
+    REDIM ui(0) AS object
+    uiClicked = False
+    mouseDownOn = 0
+END SUB
+
+FUNCTION addUiItem& (name$, x AS INTEGER, y AS INTEGER, w AS INTEGER, h AS INTEGER)
+    DIM i AS LONG
+    i = UBOUND(ui) + 1
+    REDIM _PRESERVE ui(1 TO i) AS object
+    ui(i).name = name$
+    ui(i).x = x
+    ui(i).y = y
+    ui(i).w = w
+    ui(i).h = h
+
+    addUiItem = i
+END FUNCTION
+
+SUB progressDialog (text$)
+    STATIC scanX AS SINGLE
+    DIM x AS INTEGER, y AS INTEGER
+
+    CONST scanLinesSpeed = .5
+
+    _PUTIMAGE ((_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), progressDialogImage
+
+    scanX = scanX - scanLinesSpeed
+    IF scanX < -_WIDTH(scanLinesImage) THEN scanX = _WIDTH(progressDialogImage)
+    IF scanX < 0 THEN
+        _PUTIMAGE ((_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage, , (ABS(scanX), 0)-STEP(_WIDTH(scanLinesImage) - 1, _HEIGHT(scanLinesImage) - 1)
+    ELSEIF scanX > _WIDTH(progressDialogImage) - _WIDTH(scanLinesImage) THEN
+        _PUTIMAGE (scanX + (_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage, , (0, 0)-STEP(_WIDTH(progressDialogImage) - scanX, _HEIGHT(scanLinesImage) - 1)
+    ELSE
+        _PUTIMAGE (scanX + (_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage
+    END IF
+
+    x = (_WIDTH - _PRINTWIDTH(text$)) / 2
+    y = (_HEIGHT - _FONTHEIGHT) / 2
+    _PRINTSTRING (x, y), text$
+END SUB
