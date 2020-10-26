@@ -33,7 +33,8 @@ CONST id_SIZE = 16
 CONST id_UPDATESERVER = 17
 CONST id_KICK = 18
 
-CONST timeout = 10
+CONST timeout = 20
+CONST updateThreshold = 1
 
 CONST windowWidth = 800
 CONST windowHeight = 600
@@ -57,6 +58,7 @@ TYPE object
     color AS _UNSIGNED LONG
     fgColor AS _UNSIGNED LONG
     basicInfoSent AS _BYTE
+    stateSent AS SINGLE
     broadcastOffline AS _BYTE
     ping AS SINGLE
     id AS INTEGER
@@ -77,7 +79,7 @@ REDIM SHARED serverList(0) AS object
 DIM SHARED focus AS INTEGER
 DIM SHARED endSignal AS STRING
 DIM SHARED mainWindow AS LONG, mapImage AS LONG, worldMapImage AS LONG
-DIM SHARED settingsScreenImage AS LONG, progressDialogImage AS LONG
+DIM SHARED settingsScreenImage AS LONG, dialogImage AS LONG
 DIM SHARED scanLinesImage AS LONG
 DIM SHARED messageIcon AS LONG
 DIM SHARED particle(1000) AS object
@@ -174,88 +176,84 @@ DO
     _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatAmplitude, camera.y + SIN(shipFlotation) * shipFloatAmplitude), mapImage
     _BLEND
 
-    SELECT CASE mode
-        CASE mode_onlineclient
-            IF waitingForPong = False THEN
-                serverPing = TIMER
-                sendData server, id_PING, ""
-                waitingForPong = True
+    IF mode = mode_onlineclient OR server.handle <> 0 THEN
+        IF waitingForPong = False THEN
+            serverPing = TIMER
+            sendData server, id_PING, ""
+            waitingForPong = True
+        END IF
+
+        getData server, serverStream
+        DO WHILE parse(serverStream, id, value$)
+            SELECT EVERYCASE id
+                CASE id_ID 'first piece of data sent by server if not full
+                    idSet = True
+                    me = CVI(value$)
+                    player(me).name = userName$
+                    player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
+                    player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
+                    player(me).state = True
+                    player(me).color = userColor%
+                    player(me).size = 15
+                CASE id_NEWCOLOR 'server color changes must always be applied
+                    player(me).color = CVI(value$)
+                CASE id_NEWNAME 'server name changes must always be applied
+                    player(me).name = value$
+                CASE id_COLOR
+                    player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
+                CASE id_SIZE
+                    player(CVI(LEFT$(value$, 2))).size = CVI(RIGHT$(value$, 2))
+                CASE id_POS
+                    'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
+                    player(CVI(LEFT$(value$, 2))).x = CVS(MID$(value$, LEN(value$) - 7, 4))
+                    player(CVI(LEFT$(value$, 2))).y = CVS(RIGHT$(value$, 4))
+                CASE id_NAME
+                    player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
+                CASE id_CHAT
+                    addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
+                CASE id_SHOOT
+                    target = CVI(RIGHT$(value$, 2))
+                    IF target = me THEN score = score - 100
+                    addParticles player(target).x, player(target).y, 5, _RGB32(255)
+                    addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
+                    thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
+                CASE id_PLAYERONLINE
+                    player(CVI(value$)).state = True
+                CASE id_PLAYEROFFLINE
+                    IF player(CVI(value$)).state = True THEN
+                        player(CVI(value$)).state = False
+                        addWarning player(CVI(value$)).name + " left the game."
+                    END IF
+                CASE id_PONG
+                    waitingForPong = False
+                CASE id_KICK
+                    setError "Kicked from server. Reason:" + CHR$(10) + value$, 3
+                    CLOSE server.handle
+                    GOTO start
+            END SELECT
+        LOOP
+
+        IF idSet THEN
+            IF player(me).basicInfoSent = False THEN
+                player(me).basicInfoSent = True
+                sendData server, id_COLOR, MKI$(player(me).color)
+                sendData server, id_NAME, player(me).name
+                sendData server, id_SIZE, MKI$(player(me).size)
             END IF
 
-            getData server, serverStream
-            DO WHILE parse(serverStream, id, value$)
-                SELECT EVERYCASE id
-                    CASE id_ID 'first piece of data sent by server if not full
-                        idSet = True
-                        me = CVI(value$)
-                        player(me).name = userName$
-                        player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
-                        player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
-                        player(me).state = True
-                        player(me).color = userColor%
-                        player(me).size = 15
-                    CASE id_NEWCOLOR 'server color changes must always be applied
-                        player(me).color = CVI(value$)
-                    CASE id_NEWNAME 'server name changes must always be applied
-                        player(me).name = value$
-                    CASE id_COLOR
-                        player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
-                    CASE id_SIZE
-                        player(CVI(LEFT$(value$, 2))).size = CVI(RIGHT$(value$, 2))
-                    CASE id_POS
-                        'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
-                        player(CVI(LEFT$(value$, 2))).x = CVS(MID$(value$, LEN(value$) - 7, 4))
-                        player(CVI(LEFT$(value$, 2))).y = CVS(RIGHT$(value$, 4))
-                    CASE id_NAME
-                        player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
-                    CASE id_CHAT
-                        addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
-                        hasUnreadMessages = True
-                    CASE id_SHOOT
-                        target = CVI(RIGHT$(value$, 2))
-                        IF target = me THEN score = score - 100
-                        addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                        addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
-                        thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
-                    CASE id_PLAYERONLINE
-                        player(CVI(value$)).state = True
-                    CASE id_PLAYEROFFLINE
-                        IF player(CVI(value$)).state = True THEN
-                            player(CVI(value$)).state = False
-                            addWarning player(CVI(value$)).name + " left the game."
-                        END IF
-                    CASE id_PONG
-                        waitingForPong = False
-                    CASE id_KICK
-                        COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
-                        PRINT "Kicked from server. Reason: "
-                        COLOR _RGB32(200, 172, 44)
-                        PRINT "   "; value$
-                        CLOSE server.handle
-                        GOTO start
-                END SELECT
-            LOOP
-
-            IF idSet THEN
-                IF player(me).basicInfoSent = False THEN
-                    player(me).basicInfoSent = True
-                    sendData server, id_COLOR, MKI$(player(me).color)
-                    sendData server, id_NAME, player(me).name
-                    sendData server, id_SIZE, MKI$(player(me).size)
-                END IF
-
-                IF player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY THEN
-                    player(me).prevX = player(me).x
-                    player(me).prevY = player(me).y
-                    sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y)
-                END IF
+            IF TIMER - player(me).stateSent >= updateThreshold AND (player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY) THEN
+                player(me).prevX = player(me).x
+                player(me).prevY = player(me).y
+                player(me).stateSent = TIMER
+                sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y)
             END IF
+        END IF
 
-            totalClients = 0
-            FOR i = 1 TO UBOUND(player)
-                IF player(i).state = True THEN totalClients = totalClients + 1
-            NEXT
-    END SELECT
+        totalClients = 0
+        FOR i = 1 TO UBOUND(player)
+            IF player(i).state = True THEN totalClients = totalClients + 1
+        NEXT
+    END IF
 
     IF playerSpeed < minSpeed THEN playerSpeed = minSpeed
     IF playerSpeed > maxSpeed THEN playerSpeed = maxSpeed
@@ -277,11 +275,11 @@ DO
 
     exitSign = _EXIT
     IF exitSign THEN
-        IF mode = mode_onlineclient THEN sendData server, id_PLAYERQUIT, ""
+        IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
         EXIT DO
     END IF
 
-    IF (mode = mode_onlineclient) THEN
+    IF mode = mode_onlineclient OR server.handle <> 0 THEN
         DIM k AS LONG
         k = _KEYHIT
 
@@ -296,9 +294,7 @@ DO
         DIM m$
         currentPing = TIMER - serverPing
         IF currentPing > timeout THEN
-            CLS
-            COLOR _RGB32(200, 172, 44): PRINT "/\ ";: COLOR _RGB32(244, 78, 39)
-            PRINT "Connection lost (timed out)"
+            setError "Connection lost (timed out)", 4
             CLOSE server.handle
             GOTO start
         END IF
@@ -387,7 +383,7 @@ DO
     NEXT
 
     'display UI
-    IF mode = mode_onlineclient THEN
+    IF mode = mode_onlineclient OR server.handle <> 0 THEN
         uiDisplay
         IF hasUnreadMessages THEN
             CircleFill _WIDTH - 50, 10, 8, _RGB32(0)
@@ -445,6 +441,9 @@ DO
                         sendData server, id_SIZE, MKI$(player(me).size)
                         myMessage$ = ""
                         chatOpen = False
+                    ELSEIF myMessage$ = ">quit" THEN
+                        IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
+                        EXIT DO
                     ELSEIF myMessage$ = ">updateserver" THEN
                         'temporary solution for triggering auto-update checks
                         sendData server, id_UPDATESERVER, ""
@@ -498,12 +497,12 @@ DO
     IF uiClicked THEN
         SELECT CASE ui(mouseDownOn).name
             CASE "messageicon"
-                IF mode = mode_onlineclient THEN chatOpen = NOT chatOpen
+                IF mode = mode_onlineclient OR server.handle <> 0 THEN chatOpen = NOT chatOpen
         END SELECT
         uiClicked = False
     END IF
 
-    IF mode = mode_onlineclient THEN
+    IF mode = mode_onlineclient OR server.handle <> 0 THEN
         _FONT 16
         COLOR _RGB32(0)
         _PRINTSTRING (1, 1), "Score:" + STR$(score)
@@ -520,20 +519,22 @@ SYSTEM
 
 SUB addMessageToChat (id AS INTEGER, text$)
     DIM i AS INTEGER
-    FOR i = 2 TO UBOUND(chat)
-        SWAP chat(i), chat(i - 1)
-    NEXT
-    chat(UBOUND(chat)).id = id
-    chat(UBOUND(chat)).state = True
     IF id > 0 THEN
+        FOR i = 2 TO UBOUND(chat)
+            SWAP chat(i), chat(i - 1)
+        NEXT
+        chat(UBOUND(chat)).id = id
+        chat(UBOUND(chat)).state = True
         chat(UBOUND(chat)).name = player(id).name
         chat(UBOUND(chat)).color = player(id).color
+        chat(UBOUND(chat)).text = text$
+        hasUnreadMessages = True
     ELSE
-        chat(UBOUND(chat)).name = "SYSTEM:"
-        chat(UBOUND(chat)).color = 7
-        chatOpen = True
+        setError text$, 4
+        'chat(UBOUND(chat)).name = "SYSTEM:"
+        'chat(UBOUND(chat)).color = 7
+        'chatOpen = True
     END IF
-    chat(UBOUND(chat)).text = text$
 END SUB
 
 SUB addWarning (text$)
@@ -708,11 +709,34 @@ END FUNCTION
 SUB generateImages
     DIM i AS LONG, j AS LONG
     DIM x AS INTEGER, y AS INTEGER
+    DIM r AS INTEGER, c AS _UNSIGNED LONG
+    DIM red AS INTEGER, green AS INTEGER, blue AS INTEGER, alpha AS INTEGER
+
+    mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
+    _DEST mapImage
+    RANDOMIZE 6
+    FOR i = 1 TO 15
+        x = RND * _WIDTH
+        y = RND * _HEIGHT
+        r = RND * 1000
+        red = RND * 255
+        green = RND * 255
+        blue = RND * 255
+        alpha = RND * 150
+        c = _RGB32(red, green, blue, alpha)
+        CircleFill x, y, r, c
+    NEXT
+    _DEST 0
 
     settingsScreenImage = _NEWIMAGE(windowWidth, windowHeight, 32)
     _DEST settingsScreenImage
-    FOR i = 1 TO 50
-        CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 80, RND * 150)
+    FOR i = 1 TO 10
+        x = RND * _WIDTH
+        y = RND * _HEIGHT
+        r = RND * _WIDTH
+        alpha = RND * 150
+        c = _RGB32(50, alpha)
+        CircleFill x, y, r, c
     NEXT
     _DEST 0
 
@@ -726,31 +750,23 @@ SUB generateImages
     NEXT
     _DEST 0
 
-    scanLinesImage = _NEWIMAGE(60, 100, 32)
+    scanLinesImage = _NEWIMAGE(500, 60, 32)
     _DEST scanLinesImage
-    FOR i = 0 TO _WIDTH / 2
-        LINE (i, 3)-(i, _HEIGHT - 4), _RGB32(0, 139, 0, map(i, 0, _WIDTH / 2, 0, 127))
+    FOR i = 0 TO _HEIGHT / 2
+        LINE (3, i)-(_WIDTH - 4, i), _RGB32(0, 139, 0, map(i, 0, _HEIGHT / 2, 0, 127))
     NEXT
-    FOR i = _WIDTH / 2 + 1 TO _WIDTH
-        LINE (i, 3)-(i, _HEIGHT - 4), _RGB32(0, 139, 0, map(i, _WIDTH / 2 + 1, _WIDTH, 127, 0))
+    FOR i = _HEIGHT / 2 + 1 TO _HEIGHT
+        LINE (3, i)-(_WIDTH - 4, i), _RGB32(0, 139, 0, map(i, _HEIGHT / 2 + 1, _HEIGHT, 127, 0))
     NEXT
     _DEST 0
 
-    progressDialogImage = _NEWIMAGE(500, 100, 32)
-    _DEST progressDialogImage
+    dialogImage = _NEWIMAGE(500, 100, 32)
+    _DEST dialogImage
     LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0, 180), BF
     LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0, 139, 0), B
     LINE (2, 2)-(_WIDTH - 3, _HEIGHT - 3), _RGB32(0, 139, 0), B
-    FOR i = 4 TO _HEIGHT - 5 STEP 2
+    FOR i = 4 TO _HEIGHT - 5 STEP 3
         LINE (3, i)-(_WIDTH - 4, i), _RGB32(0, 139, 0, 60)
-    NEXT
-    _DEST 0
-
-    mapImage = _NEWIMAGE(windowWidth * 4, windowHeight * 3, 32)
-    _DEST mapImage
-    RANDOMIZE 6
-    FOR i = 1 TO 15
-        CircleFill RND * _WIDTH, RND * _HEIGHT, RND * 1000, _RGB32(RND * 255, RND * 255, RND * 255, RND * 150)
     NEXT
     _DEST 0
 
@@ -985,6 +1001,7 @@ SUB settingsScreen
                     attempt = 0
                     attemptingToConnect = True
                 CASE "server"
+                    mode = mode_onlineclient
                     userName$ = dummyPlayer.name
                     IF userName$ = "" THEN userName$ = "Player"
                     userColor% = dummyPlayer.color
@@ -1004,7 +1021,6 @@ SUB settingsScreen
             server.handle = _OPENCLIENT("TCP/IP:51512:" + chosenServer$)
 
             IF server.handle THEN
-                mode = mode_onlineclient
                 serverStream = ""
                 attemptingToConnect = False
                 handshaking = True
@@ -1017,6 +1033,7 @@ SUB settingsScreen
                         EXIT SUB
                     ELSE
                         setError "Failed to connect to server. Try again later (or chose another).", 2
+                        mode = 0
                     END IF
                 END IF
             END IF
@@ -1042,12 +1059,19 @@ SUB settingsScreen
                 END SELECT
             WEND
             IF TIMER - serverPing > 10 THEN
-                setError "No response from server.", 2
+                IF mode = mode_freeplay THEN
+                    setError "No response from server. You're in free play mode.", 3
+                    EXIT SUB
+                ELSE
+                    setError "No response from server.", 2
+                    mode = 0
+                END IF
                 handshaking = False
             END IF
         ELSEIF errorDialog.state THEN
             showError
         ELSE
+            'only get input if no dialog is being presented
             DIM char$
             char$ = INKEY$
             SELECT CASE char$
@@ -1147,7 +1171,7 @@ SUB settingsScreen
     dummyPlayer.y = 120
     dummyPlayer.size = 15
     dummyPlayer.color = 1
-    dummyPlayer.name = "Player 1"
+    IF LEN(COMMAND$) = 0 THEN dummyPlayer.name = "Player 1" ELSE dummyPlayer.name = COMMAND$
     RETURN
 END SUB
 
@@ -1270,66 +1294,83 @@ FUNCTION addUiItem& (name$, x AS INTEGER, y AS INTEGER, w AS INTEGER, h AS INTEG
 END FUNCTION
 
 SUB progressDialog (text$, value AS LONG, max AS LONG)
-    STATIC scanX AS SINGLE, prevText$
+    STATIC prevText$
 
     IF text$ <> prevText$ THEN
-        scanX = _WIDTH(progressDialogImage) / 2
         prevText$ = text$
     END IF
 
     DIM x AS INTEGER, y AS INTEGER
     DIM percentage$
 
-    CONST scanLinesSpeed = .5
-
-    _PUTIMAGE ((_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), progressDialogImage
-
-    scanX = scanX - scanLinesSpeed
-    IF scanX < -_WIDTH(scanLinesImage) THEN scanX = _WIDTH(progressDialogImage)
-    IF scanX < 0 THEN
-        _PUTIMAGE ((_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage, , (ABS(scanX), 0)-STEP(_WIDTH(scanLinesImage) - 1, _HEIGHT(scanLinesImage) - 1)
-    ELSEIF scanX > _WIDTH(progressDialogImage) - _WIDTH(scanLinesImage) THEN
-        _PUTIMAGE (scanX + (_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage, , (0, 0)-STEP(_WIDTH(progressDialogImage) - scanX, _HEIGHT(scanLinesImage) - 1)
-    ELSE
-        _PUTIMAGE (scanX + (_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage
-    END IF
+    drawDialogBox
 
     x = (_WIDTH - _PRINTWIDTH(text$)) / 2
     y = (_HEIGHT - _FONTHEIGHT) / 2 - _FONTHEIGHT / 2
     _PRINTSTRING (x, y), text$
 
-    percentage$ = "[" + STRING$(map(value, 0, max, 0, 20), 254) + STRING$(map(value, 0, max, 20, 0), 250) + "] " + STR$(INT((value / max) * 100)) + "%"
+    percentage$ = "[" + STRING$(map(value, 0, max, 0, 20), 254) + STRING$(map(value, 0, max, 20, 0), 250) + "] "
     x = (_WIDTH - _PRINTWIDTH(percentage$)) / 2
     y = (_HEIGHT - _FONTHEIGHT) / 2 + _FONTHEIGHT / 2
     _PRINTSTRING (x, y), percentage$
 END SUB
 
-SUB dialog (text$)
-    STATIC scanX AS SINGLE, prevText$
-    DIM x AS INTEGER, y AS INTEGER
-
-    IF text$ <> prevText$ THEN
-        scanX = _WIDTH(progressDialogImage) / 2
-        prevText$ = text$
-    END IF
+SUB drawDialogBox
+    STATIC scanY AS SINGLE
 
     CONST scanLinesSpeed = .5
 
-    _PUTIMAGE ((_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), progressDialogImage
+    _PUTIMAGE ((_WIDTH - _WIDTH(dialogImage)) / 2, (_HEIGHT - _HEIGHT(dialogImage)) / 2), dialogImage
 
-    scanX = scanX - scanLinesSpeed
-    IF scanX < -_WIDTH(scanLinesImage) THEN scanX = _WIDTH(progressDialogImage)
-    IF scanX < 0 THEN
-        _PUTIMAGE ((_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage, , (ABS(scanX), 0)-STEP(_WIDTH(scanLinesImage) - 1, _HEIGHT(scanLinesImage) - 1)
-    ELSEIF scanX > _WIDTH(progressDialogImage) - _WIDTH(scanLinesImage) THEN
-        _PUTIMAGE (scanX + (_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage, , (0, 0)-STEP(_WIDTH(progressDialogImage) - scanX, _HEIGHT(scanLinesImage) - 1)
+    scanY = scanY + scanLinesSpeed
+    IF scanY > _HEIGHT(dialogImage) THEN scanY = -_HEIGHT(scanLinesImage)
+    IF scanY < 0 THEN
+        _PUTIMAGE ((_WIDTH - _WIDTH(dialogImage)) / 2, (_HEIGHT - _HEIGHT(dialogImage)) / 2), scanLinesImage, , (0, ABS(scanY))-STEP(_WIDTH(scanLinesImage) - 1, _HEIGHT(scanLinesImage) - 1)
+    ELSEIF scanY > _HEIGHT(dialogImage) - _HEIGHT(scanLinesImage) THEN
+        _PUTIMAGE ((_WIDTH - _WIDTH(dialogImage)) / 2, scanY + (_HEIGHT - _HEIGHT(dialogImage)) / 2), scanLinesImage, , (0, 0)-STEP(_WIDTH(scanLinesImage) - 1, _HEIGHT(dialogImage) - scanY)
     ELSE
-        _PUTIMAGE (scanX + (_WIDTH - _WIDTH(progressDialogImage)) / 2, (_HEIGHT - _HEIGHT(progressDialogImage)) / 2), scanLinesImage
+        _PUTIMAGE ((_WIDTH - _WIDTH(dialogImage)) / 2, scanY + (_HEIGHT - _HEIGHT(dialogImage)) / 2), scanLinesImage
+    END IF
+END SUB
+
+SUB dialog (__text$)
+    CONST maxLines = 4
+
+    STATIC prevText$
+    STATIC lines$(1 TO maxLines), totalLines AS INTEGER
+    DIM text$, i AS INTEGER
+    DIM x AS INTEGER, y AS INTEGER
+
+    text$ = StrReplace$(__text$, "\n", CHR$(10))
+    IF text$ <> prevText$ THEN
+        prevText$ = text$
+        totalLines = 0
+        x = INSTR(text$, CHR$(10))
+        IF x THEN
+            WHILE x
+                totalLines = totalLines + 1
+                IF totalLines > maxLines THEN totalLines = maxLines: EXIT WHILE
+                lines$(totalLines) = LEFT$(text$, x - 1)
+                text$ = MID$(text$, x + 1)
+                x = INSTR(text$, CHR$(10))
+            WEND
+            IF x = 0 AND LEN(text$) > 0 AND totalLines < maxLines THEN
+                totalLines = totalLines + 1
+                lines$(totalLines) = text$
+            END IF
+        ELSE
+            totalLines = 1
+            lines$(1) = text$
+        END IF
     END IF
 
-    x = (_WIDTH - _PRINTWIDTH(text$)) / 2
-    y = (_HEIGHT - _FONTHEIGHT) / 2
-    _PRINTSTRING (x, y), text$
+    drawDialogBox
+
+    FOR i = 1 TO totalLines
+        x = (_WIDTH - _PRINTWIDTH(lines$(i))) / 2
+        y = (_HEIGHT / 2) - ((_FONTHEIGHT * totalLines) / 2) + ((i - 1) * _FONTHEIGHT)
+        _PRINTSTRING (x, y), lines$(i)
+    NEXT
 END SUB
 
 
@@ -1361,3 +1402,19 @@ FUNCTION cursorBlink$
         lastBlink = TIMER
     END IF
 END FUNCTION
+
+FUNCTION StrReplace$ (myString$, find$, replaceWith$) 'noncase sensitive
+    DIM a$, b$, basei AS LONG, i AS LONG
+    IF LEN(myString$) = 0 THEN EXIT FUNCTION
+    a$ = myString$
+    b$ = LCASE$(find$)
+    basei = 1
+    i = INSTR(basei, LCASE$(a$), b$)
+    DO WHILE i
+        a$ = LEFT$(a$, i - 1) + replaceWith$ + RIGHT$(a$, LEN(a$) - i - LEN(b$) + 1)
+        basei = i + LEN(replaceWith$)
+        i = INSTR(basei, LCASE$(a$), b$)
+    LOOP
+    StrReplace$ = a$
+END FUNCTION
+

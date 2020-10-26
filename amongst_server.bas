@@ -52,9 +52,11 @@ TYPE object
     size AS INTEGER
 END TYPE
 
+CONST maxUsers = 10
+
 DIM SHARED totalClients AS INTEGER
-DIM SHARED playerStream(1 TO 10) AS STRING
-DIM SHARED player(1 TO 10) AS object
+DIM SHARED playerStream(1 TO maxUsers) AS STRING
+DIM SHARED player(1 TO maxUsers) AS object
 DIM SHARED colors(1 TO 12) AS _UNSIGNED LONG
 DIM i AS LONG, j AS LONG
 DIM newClient AS LONG, checkUpdate AS _BYTE, checkUpdateRequester AS INTEGER
@@ -64,7 +66,7 @@ DIM packet$
 DIM SHARED endSignal AS STRING
 endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 
-CONST timeout = 10
+CONST timeout = 20
 
 DIM SHARED host AS LONG
 PRINT "Starting server (ver. "; _TRIM$(STR$(gameVersion)); ")... ";
@@ -79,9 +81,9 @@ DO
     newClient = 0
     newClient = _OPENCONNECTION(host)
     IF newClient THEN
-        IF totalClients < UBOUND(player) THEN
+        IF totalClients < maxUsers THEN
             totalClients = totalClients + 1
-            FOR i = 1 TO UBOUND(player)
+            FOR i = 1 TO maxUsers
                 IF player(i).state = False THEN
                     playerStream(i) = ""
                     player(i).color = 0
@@ -93,7 +95,7 @@ DO
                     sendData player(i), id_ID, MKI$(i)
 
                     'send existing players' data:
-                    FOR j = 1 TO UBOUND(player)
+                    FOR j = 1 TO maxUsers
                         IF j = i THEN _CONTINUE
                         IF player(j).state = True THEN
                             sendData player(j), id_PLAYERONLINE, MKI$(i)
@@ -119,11 +121,11 @@ DO
         END IF
     END IF
 
-    FOR i = 1 TO UBOUND(player)
+    FOR i = 1 TO maxUsers
         IF player(i).state = False THEN
             IF player(i).broadcastOffline = False THEN
                 player(i).broadcastOffline = True
-                FOR j = 1 TO UBOUND(player)
+                FOR j = 1 TO maxUsers
                     IF j = i OR player(j).state = False THEN _CONTINUE
                     sendData player(j), id_PLAYEROFFLINE, MKI$(i)
                 NEXT
@@ -141,7 +143,7 @@ DO
             'player inactive
             player(i).state = False
             CLOSE player(i).handle
-            PRINT player(i).name + " lost connection."
+            PRINT "Client #" + LTRIM$(STR$(i)) + " (" + player(i).name + ") lost connection."
             totalClients = totalClients - 1
             _CONTINUE
         END IF
@@ -159,7 +161,7 @@ DO
                     attempt = 0
                     DO
                         checkAgain = False
-                        FOR j = 1 TO UBOUND(player)
+                        FOR j = 1 TO maxUsers
                             IF j = i THEN _CONTINUE
                             IF attempt THEN m$ = STR$(attempt)
                             IF player(j).name = player(i).name + m$ THEN
@@ -180,7 +182,7 @@ DO
                     newcolor = CVI(value$)
                     changed = False
                     'check if this color is already in use, so another one can be assigned
-                    FOR j = 1 TO UBOUND(player)
+                    FOR j = 1 TO maxUsers
                         IF player(j).state = True AND player(j).color = newcolor THEN
                             newcolor = newcolor + 1
                             IF newcolor > UBOUND(colors) THEN newcolor = 1
@@ -195,7 +197,7 @@ DO
                 CASE id_SHOOT
                     IF player(CVI(LEFT$(value$, 2))).size > 5 THEN
                         player(CVI(LEFT$(value$, 2))).size = player(CVI(LEFT$(value$, 2))).size - 2
-                        FOR j = 1 TO UBOUND(player)
+                        FOR j = 1 TO maxUsers
                             IF player(j).state = False THEN _CONTINUE
                             sendData player(j), id_SHOOT, MKI$(i) + LEFT$(value$, 2)
                             sendData player(j), id_SIZE, LEFT$(value$, 2) + MKI$(player(CVI(LEFT$(value$, 2))).size)
@@ -217,7 +219,7 @@ DO
                     player(i).state = False
                     CLOSE player(i).handle
                     totalClients = totalClients - 1
-                    PRINT "Client #" + LTRIM$(STR$(i)) + " " + CHR$(34) + player(i).name + CHR$(34) + " quit";
+                    PRINT "Client #" + LTRIM$(STR$(i)) + " (" + player(i).name + ") quit";
                     IF player(i).x = -1 AND player(i).y = -1 THEN
                         PRINT " - wrong version."
                     ELSE
@@ -242,7 +244,7 @@ DO
             _CONTINUE
         ELSE
             'send this player's data to everybody else
-            FOR j = 1 TO UBOUND(player)
+            FOR j = 1 TO maxUsers
                 IF j = i THEN _CONTINUE
                 IF player(j).state = True THEN
                     IF player(i).hasNewName THEN sendData player(j), id_NAME, MKI$(i) + player(i).name
@@ -291,7 +293,7 @@ DO
                                 PUT #fileHandle, , file$
                                 CLOSE #fileHandle
                                 IF _FILEEXISTS(updater$) THEN
-                                    FOR j = 1 TO UBOUND(player)
+                                    FOR j = 1 TO maxUsers
                                         IF player(j).state = False THEN _CONTINUE
                                         sendData player(j), id_KICK, "Server auto-updating; try again in a few moments."
                                     NEXT
