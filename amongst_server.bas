@@ -38,7 +38,9 @@ TYPE object
     name AS STRING
     handle AS LONG
     x AS SINGLE
+    xv AS SINGLE
     y AS SINGLE
+    yv AS SINGLE
     state AS INTEGER
     color AS INTEGER
     basicInfoSent AS _BYTE
@@ -103,7 +105,7 @@ DO
                             sendData player(i), id_PLAYERONLINE, MKI$(j)
                             sendData player(i), id_NAME, MKI$(j) + player(j).name
                             sendData player(i), id_COLOR, MKI$(j) + MKI$(player(j).color)
-                            sendData player(i), id_POS, MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y)
+                            sendData player(i), id_POS, MKI$(j) + MKS$(player(j).x) + MKS$(player(j).y) + MKS$(player(j).xv) + MKS$(player(j).yv)
                             sendData player(i), id_SIZE, MKI$(j) + MKI$(player(j).size)
                         END IF
                     NEXT
@@ -204,10 +206,11 @@ DO
                         NEXT
                     END IF
                 CASE id_POS
-                    'player(i).hasNewPosition = player(i).hasNewPosition + value$
                     player(i).hasNewPosition = value$
-                    player(i).x = CVS(LEFT$(value$, 4))
-                    player(i).y = CVS(RIGHT$(value$, 4))
+                    player(i).x = getCVS(value$)
+                    player(i).y = getCVS(value$)
+                    player(i).xv = getCVS(value$)
+                    player(i).yv = getCVS(value$)
                 CASE id_SIZE
                     player(i).hasNewSize = True
                     player(i).size = CVI(value$)
@@ -429,5 +432,15 @@ FUNCTION Download% (url$, timelimit, contents$)
     END IF ' i
     IF TIMER > t! + timelimit THEN CLOSE client: client = 0: Download = 3: prevUrl$ = "": EXIT FUNCTION
     Download = 1 'still working
+END FUNCTION
+
+FUNCTION getCVS! (buffer$)
+    getCVS! = CVS(LEFT$(buffer$, 4))
+    buffer$ = MID$(buffer$, 5)
+END FUNCTION
+
+FUNCTION getCVI% (buffer$)
+    getCVI% = CVI(LEFT$(buffer$, 2))
+    buffer$ = MID$(buffer$, 3)
 END FUNCTION
 

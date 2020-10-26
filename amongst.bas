@@ -205,8 +205,11 @@ DO
                     player(CVI(LEFT$(value$, 2))).size = CVI(RIGHT$(value$, 2))
                 CASE id_POS
                     'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
-                    player(CVI(LEFT$(value$, 2))).x = CVS(MID$(value$, LEN(value$) - 7, 4))
-                    player(CVI(LEFT$(value$, 2))).y = CVS(RIGHT$(value$, 4))
+                    id = getCVI(value$)
+                    player(id).x = getCVS(value$)
+                    player(id).y = getCVS(value$)
+                    player(id).xv = getCVS(value$)
+                    player(id).yv = getCVS(value$)
                 CASE id_NAME
                     player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
                 CASE id_CHAT
@@ -241,11 +244,11 @@ DO
                 sendData server, id_SIZE, MKI$(player(me).size)
             END IF
 
-            IF TIMER - player(me).stateSent >= updateThreshold AND (player(me).x <> player(me).prevX OR player(me).y <> player(me).prevY) THEN
-                player(me).prevX = player(me).x
-                player(me).prevY = player(me).y
+            IF TIMER - player(me).stateSent >= updateThreshold OR (player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY) THEN
+                player(me).prevX = player(me).xv
+                player(me).prevY = player(me).yv
                 player(me).stateSent = TIMER
-                sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y)
+                sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y) + MKS$(player(me).xv) + MKS$(player(me).yv)
             END IF
         END IF
 
@@ -260,10 +263,12 @@ DO
 
     IF idSet THEN
         IF chatOpen = False THEN
-            IF _KEYDOWN(keyUP) THEN player(me).y = player(me).y - playerSpeed
-            IF _KEYDOWN(keyDOWN) THEN player(me).y = player(me).y + playerSpeed
-            IF _KEYDOWN(keyLEFT) THEN player(me).x = player(me).x - playerSpeed
-            IF _KEYDOWN(keyRIGHT) THEN player(me).x = player(me).x + playerSpeed
+            player(me).xv = 0
+            player(me).yv = 0
+            IF _KEYDOWN(keyUP) THEN player(me).yv = -playerSpeed
+            IF _KEYDOWN(keyDOWN) THEN player(me).yv = playerSpeed
+            IF _KEYDOWN(keyLEFT) THEN player(me).xv = -playerSpeed
+            IF _KEYDOWN(keyRIGHT) THEN player(me).xv = playerSpeed
 
             IF player(me).x < 0 THEN player(me).x = 0
             IF player(me).y < 0 THEN player(me).y = 0
@@ -335,12 +340,9 @@ DO
 
     FOR i = 1 TO UBOUND(player)
         IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
-        'IF i <> me AND LEN(playerStream(i)) > 0 THEN
-        '    'process player stream of coordinates
-        '    player(i).x = CVS(MID$(playerStream(i), 1, 4))
-        '    player(i).y = CVS(MID$(playerStream(i), 5, 4))
-        '    playerStream(i) = MID$(playerStream(i), 9)
-        'END IF
+
+        player(i).x = player(i).x + player(i).xv
+        player(i).y = player(i).y + player(i).yv
 
         x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
         y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
@@ -1416,5 +1418,15 @@ FUNCTION StrReplace$ (myString$, find$, replaceWith$) 'noncase sensitive
         i = INSTR(basei, LCASE$(a$), b$)
     LOOP
     StrReplace$ = a$
+END FUNCTION
+
+FUNCTION getCVS! (buffer$)
+    getCVS! = CVS(LEFT$(buffer$, 4))
+    buffer$ = MID$(buffer$, 5)
+END FUNCTION
+
+FUNCTION getCVI% (buffer$)
+    getCVI% = CVI(LEFT$(buffer$, 2))
+    buffer$ = MID$(buffer$, 3)
 END FUNCTION
 
