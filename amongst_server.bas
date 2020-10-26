@@ -3,7 +3,7 @@ OPTION _EXPLICIT
 DIM SHARED gameVersion AS INTEGER
 'this is to be increased everytime the client
 'becomes incompatible with previous versions
-gameVersion = 2
+gameVersion = 3
 
 $LET DEBUGGING = FALSE
 $IF DEBUGGING = TRUE THEN
