@@ -34,7 +34,7 @@ CONST id_UPDATESERVER = 17
 CONST id_KICK = 18
 
 CONST timeout = 20
-CONST updateThreshold = 1
+CONST updateThreshold = .05
 
 CONST windowWidth = 800
 CONST windowHeight = 600
@@ -99,6 +99,7 @@ DIM SHARED errorDialog AS object
 DIM idSet AS _BYTE, shipMovement AS _BYTE
 DIM currentPing AS SINGLE, waitingForPong AS _BYTE
 DIM id AS INTEGER, value$
+DIM myMessage$, char$, tooFast AS _BYTE
 
 DIM target AS INTEGER
 DIM score AS LONG
@@ -119,405 +120,406 @@ restoreColors
 generateImages
 
 intro
-start:
-settingsScreen
-
-_FONT 8
-_PRINTMODE _KEEPBACKGROUND
-
-DIM SHARED playerSpeed AS SINGLE
-DIM SHARED camera AS object
-
-RANDOMIZE TIMER
-
-CONST keyUP = 18432
-CONST keyDOWN = 20480
-CONST keyLEFT = 19200
-CONST keyRIGHT = 19712
-CONST keySPACE = 32
-
-CONST cameraWindow = 100
-
-CONST minSpeed = 3
-CONST maxSpeed = 5
-
-playerSpeed = maxSpeed
-shipMovement = True
-
-uiReset
-i = addUiItem("messageicon", windowWidth - 50, 10, _WIDTH(messageIcon), _HEIGHT(messageIcon))
-ui(i).handle = messageIcon
-ui(i).state = True
-ui(i).color = _RGB32(255)
-
-IF mode > 0 THEN
-    idSet = False
-ELSE
-    idSet = True
-    me = 1
-    player(me).name = userName$
-    player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
-    player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
-    player(me).state = True
-    player(me).color = userColor%
-    player(me).size = 15
-END IF
 DO
-    CLS
+    settingsScreen
 
-    DIM shipFlotation AS SINGLE, shipFloatAmplitude AS SINGLE
-    IF shipMovement THEN
-        shipFlotation = shipFlotation + .05
-        IF shipFlotation > _PI(2) THEN shipFlotation = shipFlotation - _PI(2)
-        shipFloatAmplitude = 1.5
+    _FONT 8
+    _PRINTMODE _KEEPBACKGROUND
+
+    DIM SHARED playerSpeed AS SINGLE
+    DIM SHARED camera AS object
+
+    RANDOMIZE TIMER
+
+    CONST keyUP = 18432
+    CONST keyDOWN = 20480
+    CONST keyLEFT = 19200
+    CONST keyRIGHT = 19712
+    CONST keySPACE = 32
+
+    CONST cameraWindow = 100
+
+    CONST minSpeed = 3
+    CONST maxSpeed = 5
+
+    playerSpeed = maxSpeed
+    shipMovement = True
+
+    uiReset
+    i = addUiItem("messageicon", windowWidth - 50, 10, _WIDTH(messageIcon), _HEIGHT(messageIcon))
+    ui(i).handle = messageIcon
+    ui(i).state = True
+    ui(i).color = _RGB32(255)
+
+    IF mode > 0 THEN
+        idSet = False
+    ELSE
+        idSet = True
+        me = 1
+        player(me).name = userName$
+        player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
+        player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
+        player(me).state = True
+        player(me).color = userColor%
+        player(me).size = 15
     END IF
+    DO
+        CLS
 
-    _DONTBLEND
-    _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatAmplitude, camera.y + SIN(shipFlotation) * shipFloatAmplitude), mapImage
-    _BLEND
-
-    IF mode = mode_onlineclient OR server.handle <> 0 THEN
-        IF waitingForPong = False THEN
-            serverPing = TIMER
-            sendData server, id_PING, ""
-            waitingForPong = True
+        DIM shipFlotation AS SINGLE, shipFloatAmplitude AS SINGLE
+        IF shipMovement THEN
+            shipFlotation = shipFlotation + .05
+            IF shipFlotation > _PI(2) THEN shipFlotation = shipFlotation - _PI(2)
+            shipFloatAmplitude = 1.5
         END IF
 
-        getData server, serverStream
-        DO WHILE parse(serverStream, id, value$)
-            SELECT EVERYCASE id
-                CASE id_ID 'first piece of data sent by server if not full
-                    idSet = True
-                    me = CVI(value$)
-                    player(me).name = userName$
-                    player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
-                    player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
-                    player(me).state = True
-                    player(me).color = userColor%
-                    player(me).size = 15
-                CASE id_NEWCOLOR 'server color changes must always be applied
-                    player(me).color = CVI(value$)
-                CASE id_NEWNAME 'server name changes must always be applied
-                    player(me).name = value$
-                CASE id_COLOR
-                    player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
-                CASE id_SIZE
-                    player(CVI(LEFT$(value$, 2))).size = CVI(RIGHT$(value$, 2))
-                CASE id_POS
-                    'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
-                    id = getCVI(value$)
-                    player(id).x = getCVS(value$)
-                    player(id).y = getCVS(value$)
-                    player(id).xv = getCVS(value$)
-                    player(id).yv = getCVS(value$)
-                CASE id_NAME
-                    player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
-                CASE id_CHAT
-                    addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
-                CASE id_SHOOT
-                    target = CVI(RIGHT$(value$, 2))
-                    IF target = me THEN score = score - 100
-                    addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                    addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
-                    thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
-                CASE id_PLAYERONLINE
-                    player(CVI(value$)).state = True
-                CASE id_PLAYEROFFLINE
-                    IF player(CVI(value$)).state = True THEN
-                        player(CVI(value$)).state = False
-                        addWarning player(CVI(value$)).name + " left the game."
-                    END IF
-                CASE id_PONG
-                    waitingForPong = False
-                CASE id_KICK
-                    setError "Kicked from server. Reason:" + CHR$(10) + value$, 3
-                    CLOSE server.handle
-                    GOTO start
-            END SELECT
-        LOOP
+        _DONTBLEND
+        _PUTIMAGE (camera.x + COS(shipFlotation) * shipFloatAmplitude, camera.y + SIN(shipFlotation) * shipFloatAmplitude), mapImage
+        _BLEND
+
+        IF mode = mode_onlineclient OR server.handle <> 0 THEN
+            IF waitingForPong = False THEN
+                serverPing = TIMER
+                sendData server, id_PING, ""
+                waitingForPong = True
+            END IF
+
+            getData server, serverStream
+            WHILE parse(serverStream, id, value$)
+                SELECT EVERYCASE id
+                    CASE id_ID 'first piece of data sent by server if not full
+                        idSet = True
+                        me = CVI(value$)
+                        player(me).name = userName$
+                        player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
+                        player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
+                        player(me).state = True
+                        player(me).color = userColor%
+                        player(me).size = 15
+                    CASE id_NEWCOLOR 'server color changes must always be applied
+                        player(me).color = CVI(value$)
+                    CASE id_NEWNAME 'server name changes must always be applied
+                        player(me).name = value$
+                    CASE id_COLOR
+                        player(CVI(LEFT$(value$, 2))).color = CVI(RIGHT$(value$, 2))
+                    CASE id_SIZE
+                        player(CVI(LEFT$(value$, 2))).size = CVI(RIGHT$(value$, 2))
+                    CASE id_POS
+                        'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
+                        id = getCVI(value$)
+                        player(id).x = getCVS(value$)
+                        player(id).y = getCVS(value$)
+                        player(id).xv = getCVS(value$)
+                        player(id).yv = getCVS(value$)
+                    CASE id_NAME
+                        player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
+                    CASE id_CHAT
+                        addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
+                    CASE id_SHOOT
+                        target = CVI(RIGHT$(value$, 2))
+                        IF target = me THEN score = score - 100
+                        addParticles player(target).x, player(target).y, 5, _RGB32(255)
+                        addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
+                        thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
+                    CASE id_PLAYERONLINE
+                        player(CVI(value$)).state = True
+                    CASE id_PLAYEROFFLINE
+                        IF player(CVI(value$)).state = True THEN
+                            player(CVI(value$)).state = False
+                            addWarning player(CVI(value$)).name + " left the game."
+                        END IF
+                    CASE id_PONG
+                        waitingForPong = False
+                    CASE id_KICK
+                        setError "Kicked from server. Reason:" + CHR$(10) + value$, 3
+                        CLOSE server.handle
+                        EXIT DO
+                END SELECT
+            WEND
+
+            IF idSet THEN
+                IF player(me).basicInfoSent = False THEN
+                    player(me).basicInfoSent = True
+                    sendData server, id_COLOR, MKI$(player(me).color)
+                    sendData server, id_NAME, player(me).name
+                    sendData server, id_SIZE, MKI$(player(me).size)
+                END IF
+
+                IF player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY THEN
+                    player(me).prevX = player(me).xv
+                    player(me).prevY = player(me).yv
+                    player(me).stateSent = TIMER
+                    sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y) + MKS$(player(me).xv) + MKS$(player(me).yv)
+                END IF
+            END IF
+
+            totalClients = 0
+            FOR i = 1 TO UBOUND(player)
+                IF player(i).state = True THEN totalClients = totalClients + 1
+            NEXT
+        END IF
+
+        IF playerSpeed < minSpeed THEN playerSpeed = minSpeed
+        IF playerSpeed > maxSpeed THEN playerSpeed = maxSpeed
 
         IF idSet THEN
-            IF player(me).basicInfoSent = False THEN
-                player(me).basicInfoSent = True
-                sendData server, id_COLOR, MKI$(player(me).color)
-                sendData server, id_NAME, player(me).name
-                sendData server, id_SIZE, MKI$(player(me).size)
-            END IF
+            IF chatOpen = False THEN
+                player(me).xv = 0
+                player(me).yv = 0
+                IF _KEYDOWN(keyUP) THEN player(me).yv = -playerSpeed
+                IF _KEYDOWN(keyDOWN) THEN player(me).yv = playerSpeed
+                IF _KEYDOWN(keyLEFT) THEN player(me).xv = -playerSpeed
+                IF _KEYDOWN(keyRIGHT) THEN player(me).xv = playerSpeed
 
-            IF timeElapsedSince(player(me).stateSent) >= updateThreshold OR (player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY) THEN
-                player(me).prevX = player(me).xv
-                player(me).prevY = player(me).yv
-                player(me).stateSent = TIMER
-                sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y) + MKS$(player(me).xv) + MKS$(player(me).yv)
+                IF player(me).x < 0 THEN player(me).x = 0
+                IF player(me).y < 0 THEN player(me).y = 0
+                IF player(me).x > _WIDTH(mapImage) THEN player(me).x = _WIDTH(mapImage)
+                IF player(me).y > _HEIGHT(mapImage) THEN player(me).y = _HEIGHT(mapImage)
             END IF
+            adjustCamera
         END IF
 
-        totalClients = 0
+        exitSign = _EXIT
+        IF exitSign THEN
+            IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
+            EXIT DO
+        END IF
+
+        IF mode = mode_onlineclient OR server.handle <> 0 THEN
+            DIM k AS LONG
+            k = _KEYHIT
+
+            IF k = 27 THEN
+                IF chatOpen THEN
+                    myMessage$ = ""
+                    chatOpen = False
+                END IF
+            END IF
+
+            COLOR _RGB32(255)
+
+            DIM m$
+            currentPing = timeElapsedSince(serverPing)
+            IF currentPing > timeout THEN
+                setError "Connection lost (timed out)", 4
+                CLOSE server.handle
+                EXIT DO
+            END IF
+            m$ = LTRIM$(STR$(currentPing))
+            m$ = MID$(m$, INSTR(m$, ".") + 1)
+            m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"
+            _PRINTSTRING (_WIDTH - 150 - _PRINTWIDTH(m$), 0), m$
+
+            _FONT 16
+            m$ = LTRIM$(STR$(totalClients)) + "/" + LTRIM$(STR$(UBOUND(player)))
+            _PRINTSTRING ((_WIDTH - _PRINTWIDTH(m$)) / 2, _HEIGHT - _FONTHEIGHT), m$
+            _FONT 8
+        END IF
+
+        target = 0
+        DIM testDist AS SINGLE, closest AS SINGLE
+        closest = _WIDTH
         FOR i = 1 TO UBOUND(player)
-            IF player(i).state = True THEN totalClients = totalClients + 1
+            'proximity
+            IF i <> me AND player(i).state = True THEN
+                testDist = dist(player(me).x, player(me).y, player(i).x, player(i).y)
+                IF testDist < 150 AND testDist < closest THEN
+                    closest = testDist
+                    target = i
+                END IF
+            END IF
         NEXT
-    END IF
 
-    IF playerSpeed < minSpeed THEN playerSpeed = minSpeed
-    IF playerSpeed > maxSpeed THEN playerSpeed = maxSpeed
+        IF target THEN
+            DIM targetAnimation AS SINGLE
+            targetAnimation = targetAnimation - .1
+            IF targetAnimation < 0 THEN targetAnimation = 5
 
-    IF idSet THEN
-        IF chatOpen = False THEN
-            player(me).xv = 0
-            player(me).yv = 0
-            IF _KEYDOWN(keyUP) THEN player(me).yv = -playerSpeed
-            IF _KEYDOWN(keyDOWN) THEN player(me).yv = playerSpeed
-            IF _KEYDOWN(keyLEFT) THEN player(me).xv = -playerSpeed
-            IF _KEYDOWN(keyRIGHT) THEN player(me).xv = playerSpeed
-
-            IF player(me).x < 0 THEN player(me).x = 0
-            IF player(me).y < 0 THEN player(me).y = 0
-            IF player(me).x > _WIDTH(mapImage) THEN player(me).x = _WIDTH(mapImage)
-            IF player(me).y > _HEIGHT(mapImage) THEN player(me).y = _HEIGHT(mapImage)
-        END IF
-        adjustCamera
-    END IF
-
-    exitSign = _EXIT
-    IF exitSign THEN
-        IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
-        EXIT DO
-    END IF
-
-    IF mode = mode_onlineclient OR server.handle <> 0 THEN
-        DIM k AS LONG
-        k = _KEYHIT
-
-        IF k = 27 THEN
-            IF chatOpen THEN
-                chatOpen = False
-            END IF
+            x = player(target).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+            y = player(target).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
+            CircleFill x, y, player(target).size + 10 + targetAnimation, _RGB32(255, 0, 0, 100)
         END IF
 
-        COLOR _RGB32(255)
+        FOR i = 1 TO UBOUND(player)
+            IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
 
-        DIM m$
-        currentPing = timeElapsedSince(serverPing)
-        IF currentPing > timeout THEN
-            setError "Connection lost (timed out)", 4
-            CLOSE server.handle
-            GOTO start
-        END IF
-        m$ = LTRIM$(STR$(currentPing))
-        m$ = MID$(m$, INSTR(m$, ".") + 1)
-        m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"
-        _PRINTSTRING (_WIDTH - 150 - _PRINTWIDTH(m$), 0), m$
+            player(i).x = player(i).x + player(i).xv
+            player(i).y = player(i).y + player(i).yv
 
-        _FONT 16
-        m$ = LTRIM$(STR$(totalClients)) + "/" + LTRIM$(STR$(UBOUND(player)))
-        _PRINTSTRING ((_WIDTH - _PRINTWIDTH(m$)) / 2, _HEIGHT - _FONTHEIGHT), m$
-        _FONT 8
-    END IF
-
-    target = 0
-    DIM testDist AS SINGLE, closest AS SINGLE
-    closest = _WIDTH
-    FOR i = 1 TO UBOUND(player)
-        'proximity
-        IF i <> me AND player(i).state = True THEN
-            testDist = dist(player(me).x, player(me).y, player(i).x, player(i).y)
-            IF testDist < 150 AND testDist < closest THEN
-                closest = testDist
-                target = i
-            END IF
-        END IF
-    NEXT
-
-    IF target THEN
-        DIM targetAnimation AS SINGLE
-        targetAnimation = targetAnimation - .1
-        IF targetAnimation < 0 THEN targetAnimation = 5
-
-        x = player(target).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
-        y = player(target).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
-        CircleFill x, y, player(target).size + 10 + targetAnimation, _RGB32(255, 0, 0, 100)
-    END IF
-
-    FOR i = 1 TO UBOUND(player)
-        IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
-
-        player(i).x = player(i).x + player(i).xv
-        player(i).y = player(i).y + player(i).yv
-
-        x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
-        y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
-        CircleFill x, y + 6, player(i).size + 5, _RGB32(0, 50)
-        CircleFill x, y, player(i).size + 5, _RGB32(0)
-        CircleFill x, y, player(i).size, colors(player(i).color).value
-        COLOR _RGB32(0)
-        _PRINTSTRING (1 + x - _PRINTWIDTH(player(i).name) / 2, 1 + y - 25), player(i).name
-        COLOR _RGB32(255)
-        _PRINTSTRING (x - _PRINTWIDTH(player(i).name) / 2, y - 25), player(i).name
-    NEXT
-
-    IF _KEYDOWN(keySPACE) THEN
-        DIM lastShot AS SINGLE
-        IF target > 0 THEN
-            IF timeElapsedSince(lastShot) > .5 THEN
-                lastShot = TIMER
-                score = score + 100
-                sendData server, id_SHOOT, MKI$(target)
-                addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
-                thickLine player(me).x + camera.x, player(me).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
-            END IF
-        END IF
-    END IF
-
-    updateParticles
-
-    'LINE (_WIDTH / 2 - cameraWindow, _HEIGHT / 2 - cameraWindow)-STEP(cameraWindow * 2, cameraWindow * 2), , B
-
-    'display warnings
-    FOR i = 1 TO UBOUND(warning)
-        IF warning(i).state = True THEN
+            x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
+            y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
+            CircleFill x, y + 6, player(i).size + 5, _RGB32(0, 50)
+            CircleFill x, y, player(i).size + 5, _RGB32(0)
+            CircleFill x, y, player(i).size, colors(player(i).color).value
             COLOR _RGB32(0)
-            _PRINTSTRING (11, 1 + _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
-            COLOR _RGB32(238, 50, 22)
-            _PRINTSTRING (10, _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
-            IF timeElapsedSince(warning(i).ping) > 2.5 THEN warning(i).state = False
-        END IF
-    NEXT
+            _PRINTSTRING (1 + x - _PRINTWIDTH(player(i).name) / 2, 1 + y - 25), player(i).name
+            COLOR _RGB32(255)
+            _PRINTSTRING (x - _PRINTWIDTH(player(i).name) / 2, y - 25), player(i).name
+        NEXT
 
-    'display UI
-    IF mode = mode_onlineclient OR server.handle <> 0 THEN
-        uiDisplay
-        IF hasUnreadMessages THEN
-            CircleFill _WIDTH - 50, 10, 8, _RGB32(0)
-            CircleFill _WIDTH - 50, 10, 5, _RGB32(205, 6, 0)
+        IF _KEYDOWN(keySPACE) AND chatOpen = False THEN
+            DIM lastShot AS SINGLE
+            IF target > 0 THEN
+                IF timeElapsedSince(lastShot) > .5 THEN
+                    lastShot = TIMER
+                    score = score + 100
+                    sendData server, id_SHOOT, MKI$(target)
+                    addParticles player(target).x, player(target).y, 5, _RGB32(255)
+                    addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
+                    thickLine player(me).x + camera.x, player(me).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
+                END IF
+            END IF
         END IF
 
-        IF chatOpen THEN
-            hasUnreadMessages = False
-            LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0, 150), BF
-            LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0), B
+        updateParticles
+
+        'LINE (_WIDTH / 2 - cameraWindow, _HEIGHT / 2 - cameraWindow)-STEP(cameraWindow * 2, cameraWindow * 2), , B
+
+        'display warnings
+        FOR i = 1 TO UBOUND(warning)
+            IF warning(i).state = True THEN
+                COLOR _RGB32(0)
+                _PRINTSTRING (11, 1 + _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
+                COLOR _RGB32(238, 50, 22)
+                _PRINTSTRING (10, _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
+                IF timeElapsedSince(warning(i).ping) > 2.5 THEN warning(i).state = False
+            END IF
+        NEXT
+
+        'display UI
+        IF mode = mode_onlineclient OR server.handle <> 0 THEN
+            uiDisplay
+            IF hasUnreadMessages THEN
+                CircleFill _WIDTH - 50, 10, 8, _RGB32(0)
+                CircleFill _WIDTH - 50, 10, 5, _RGB32(205, 6, 0)
+            END IF
+
+            IF chatOpen THEN
+                hasUnreadMessages = False
+                LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0, 150), BF
+                LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0), B
+                _FONT 16
+                COLOR _RGB32(0)
+                FOR i = 1 TO UBOUND(chat)
+                    IF chat(i).state THEN
+                        y = 65 + _FONTHEIGHT * ((i - 1) * 2)
+                        LINE (55, y - 10)-(_WIDTH - 55, y + 18), _RGB32(255, 80), BF
+                        _FONT 8
+                        x = 60
+                        IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).name)
+                        COLOR _RGB32(100)
+                        _PRINTSTRING (1 + x, 1 + y - 8), chat(i).name
+                        COLOR colors(chat(i).color).value
+                        _PRINTSTRING (x, y - 8), chat(i).name
+                        _FONT 16
+                        x = 60
+                        IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).text)
+                        COLOR _RGB32(100)
+                        _PRINTSTRING (1 + x, 1 + y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
+                        COLOR _RGB32(255)
+                        _PRINTSTRING (x, y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
+                    END IF
+                NEXT
+
+                CONST messageSpeed = 1.5
+                char$ = INKEY$
+                SELECT CASE char$
+                    CASE CHR$(22) 'ctrl+v
+                        myMessage$ = myMessage$ + _CLIPBOARD$
+                    CASE " " TO "z"
+                        myMessage$ = myMessage$ + char$
+                    CASE CHR$(8)
+                        IF LEN(myMessage$) THEN
+                            myMessage$ = LEFT$(myMessage$, LEN(myMessage$) - 1)
+                        END IF
+                    CASE CHR$(13)
+                        DIM lastSentChat AS SINGLE
+                        IF myMessage$ = ">reset" THEN
+                            player(me).size = 15
+                            sendData server, id_SIZE, MKI$(player(me).size)
+                            myMessage$ = ""
+                            chatOpen = False
+                        ELSEIF myMessage$ = ">big" THEN
+                            player(me).size = 25
+                            sendData server, id_SIZE, MKI$(player(me).size)
+                            myMessage$ = ""
+                            chatOpen = False
+                        ELSEIF myMessage$ = ">quit" THEN
+                            IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
+                            CLOSE server.handle
+                            EXIT DO
+                        ELSEIF myMessage$ = ">updateserver" THEN
+                            'temporary solution for triggering auto-update checks
+                            sendData server, id_UPDATESERVER, ""
+                            myMessage$ = ""
+                            chatOpen = False
+                        ELSE
+                            IF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) > messageSpeed THEN
+                                lastSentChat = TIMER
+                                addMessageToChat me, myMessage$
+                                sendData server, id_CHAT, myMessage$
+                                myMessage$ = ""
+                            ELSEIF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) < messageSpeed THEN
+                                tooFast = True
+                            END IF
+                        END IF
+                END SELECT
+
+                COLOR _RGB32(0)
+                _PRINTSTRING (61, 61 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + cursorBlink
+                COLOR _RGB32(255)
+                _PRINTSTRING (60, 60 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + cursorBlink
+                _FONT 8
+
+                IF tooFast THEN
+                    DIM s AS INTEGER
+                    s = _CEIL(messageSpeed - (timeElapsedSince(lastSentChat)))
+                    m$ = "(too fast - wait" + STR$(s) + " second" + LEFT$("s", ABS(s > 1)) + ")"
+                    y = _HEIGHT - 50 - _FONTHEIGHT
+                    COLOR _RGB32(0)
+                    _PRINTSTRING (61, 1 + y), m$
+                    COLOR _RGB32(200, 177, 44)
+                    _PRINTSTRING (60, y), m$
+                    IF timeElapsedSince(lastSentChat) > messageSpeed THEN tooFast = False
+                END IF
+            ELSE
+                char$ = INKEY$
+                SELECT CASE char$
+                    CASE CHR$(13)
+                        chatOpen = True
+                END SELECT
+            END IF
+        END IF
+
+        IF errorDialog.state THEN
+            _FONT 16
+            showError
+            _FONT 8
+        END IF
+
+        uiCheck
+        IF uiClicked THEN
+            SELECT CASE ui(mouseDownOn).name
+                CASE "messageicon"
+                    IF mode = mode_onlineclient OR server.handle <> 0 THEN chatOpen = NOT chatOpen
+            END SELECT
+            uiClicked = False
+        END IF
+
+        IF mode = mode_onlineclient OR server.handle <> 0 THEN
             _FONT 16
             COLOR _RGB32(0)
-            FOR i = 1 TO UBOUND(chat)
-                IF chat(i).state THEN
-                    y = 65 + _FONTHEIGHT * ((i - 1) * 2)
-                    LINE (55, y - 10)-(_WIDTH - 55, y + 18), _RGB32(255, 80), BF
-                    _FONT 8
-                    x = 60
-                    IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).name)
-                    COLOR _RGB32(100)
-                    _PRINTSTRING (1 + x, 1 + y - 8), chat(i).name
-                    COLOR colors(chat(i).color).value
-                    _PRINTSTRING (x, y - 8), chat(i).name
-                    _FONT 16
-                    x = 60
-                    IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).text)
-                    COLOR _RGB32(100)
-                    _PRINTSTRING (1 + x, 1 + y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
-                    COLOR _RGB32(255)
-                    _PRINTSTRING (x, y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
-                END IF
-            NEXT
-
-            DIM myMessage$, char$, tooFast AS _BYTE
-            CONST messageSpeed = 1.5
-            char$ = INKEY$
-            SELECT CASE char$
-                CASE CHR$(22) 'ctrl+v
-                    myMessage$ = myMessage$ + _CLIPBOARD$
-                CASE " " TO "z"
-                    myMessage$ = myMessage$ + char$
-                CASE CHR$(8)
-                    IF LEN(myMessage$) THEN
-                        myMessage$ = LEFT$(myMessage$, LEN(myMessage$) - 1)
-                    END IF
-                CASE CHR$(13)
-                    DIM lastSentChat AS SINGLE
-                    IF myMessage$ = ">reset" THEN
-                        player(me).size = 15
-                        sendData server, id_SIZE, MKI$(player(me).size)
-                        myMessage$ = ""
-                        chatOpen = False
-                    ELSEIF myMessage$ = ">big" THEN
-                        player(me).size = 25
-                        sendData server, id_SIZE, MKI$(player(me).size)
-                        myMessage$ = ""
-                        chatOpen = False
-                    ELSEIF myMessage$ = ">quit" THEN
-                        IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
-                        EXIT DO
-                    ELSEIF myMessage$ = ">updateserver" THEN
-                        'temporary solution for triggering auto-update checks
-                        sendData server, id_UPDATESERVER, ""
-                        myMessage$ = ""
-                        chatOpen = False
-                    ELSE
-                        IF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) > messageSpeed THEN
-                            lastSentChat = TIMER
-                            addMessageToChat me, myMessage$
-                            sendData server, id_CHAT, myMessage$
-                            myMessage$ = ""
-                        ELSEIF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) < messageSpeed THEN
-                            tooFast = True
-                        END IF
-                    END IF
-            END SELECT
-
-            COLOR _RGB32(0)
-            _PRINTSTRING (61, 61 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + cursorBlink
+            _PRINTSTRING (1, 1), "Score:" + STR$(score)
             COLOR _RGB32(255)
-            _PRINTSTRING (60, 60 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + cursorBlink
+            _PRINTSTRING (0, 0), "Score:" + STR$(score)
             _FONT 8
-
-            IF tooFast THEN
-                DIM s AS INTEGER
-                s = _CEIL(messageSpeed - (timeElapsedSince(lastSentChat)))
-                m$ = "(too fast - wait" + STR$(s) + " second" + LEFT$("s", ABS(s > 1)) + ")"
-                y = _HEIGHT - 50 - _FONTHEIGHT
-                COLOR _RGB32(0)
-                _PRINTSTRING (61, 1 + y), m$
-                COLOR _RGB32(200, 177, 44)
-                _PRINTSTRING (60, y), m$
-                IF timeElapsedSince(lastSentChat) > messageSpeed THEN tooFast = False
-            END IF
-        ELSE
-            char$ = INKEY$
-            SELECT CASE char$
-                CASE CHR$(13)
-                    chatOpen = True
-            END SELECT
         END IF
-    END IF
 
-    IF errorDialog.state THEN
-        _FONT 16
-        showError
-        _FONT 8
-    END IF
-
-    uiCheck
-    IF uiClicked THEN
-        SELECT CASE ui(mouseDownOn).name
-            CASE "messageicon"
-                IF mode = mode_onlineclient OR server.handle <> 0 THEN chatOpen = NOT chatOpen
-        END SELECT
-        uiClicked = False
-    END IF
-
-    IF mode = mode_onlineclient OR server.handle <> 0 THEN
-        _FONT 16
-        COLOR _RGB32(0)
-        _PRINTSTRING (1, 1), "Score:" + STR$(score)
-        COLOR _RGB32(255)
-        _PRINTSTRING (0, 0), "Score:" + STR$(score)
-        _FONT 8
-    END IF
-
-    _DISPLAY
-    _LIMIT 60
+        _DISPLAY
+        _LIMIT 60
+    LOOP
+    CLOSE
 LOOP
-CLOSE
-SYSTEM
 
 SUB addMessageToChat (id AS INTEGER, text$)
     DIM i AS INTEGER
@@ -1434,3 +1436,8 @@ FUNCTION timeElapsedSince! (startTime!)
     IF startTime! > TIMER THEN startTime! = startTime! - 86400
     timeElapsedSince! = TIMER - startTime!
 END FUNCTION
+
+FUNCTION lerp! (start!, stp!, amt!)
+    lerp! = amt! * (stp! - start!) + start!
+END FUNCTION
+
