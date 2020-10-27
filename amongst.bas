@@ -244,7 +244,7 @@ DO
                 sendData server, id_SIZE, MKI$(player(me).size)
             END IF
 
-            IF TIMER - player(me).stateSent >= updateThreshold OR (player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY) THEN
+            IF timeElapsedSince(player(me).stateSent) >= updateThreshold OR (player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY) THEN
                 player(me).prevX = player(me).xv
                 player(me).prevY = player(me).yv
                 player(me).stateSent = TIMER
@@ -297,7 +297,7 @@ DO
         COLOR _RGB32(255)
 
         DIM m$
-        currentPing = TIMER - serverPing
+        currentPing = timeElapsedSince(serverPing)
         IF currentPing > timeout THEN
             setError "Connection lost (timed out)", 4
             CLOSE server.handle
@@ -358,7 +358,7 @@ DO
     IF _KEYDOWN(keySPACE) THEN
         DIM lastShot AS SINGLE
         IF target > 0 THEN
-            IF TIMER - lastShot > .5 THEN
+            IF timeElapsedSince(lastShot) > .5 THEN
                 lastShot = TIMER
                 score = score + 100
                 sendData server, id_SHOOT, MKI$(target)
@@ -380,7 +380,7 @@ DO
             _PRINTSTRING (11, 1 + _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
             COLOR _RGB32(238, 50, 22)
             _PRINTSTRING (10, _HEIGHT / 2 + _FONTHEIGHT * i), warning(i).name
-            IF TIMER - warning(i).ping > 2.5 THEN warning(i).state = False
+            IF timeElapsedSince(warning(i).ping) > 2.5 THEN warning(i).state = False
         END IF
     NEXT
 
@@ -452,12 +452,12 @@ DO
                         myMessage$ = ""
                         chatOpen = False
                     ELSE
-                        IF LEN(myMessage$) > 0 AND TIMER - lastSentChat > messageSpeed THEN
+                        IF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) > messageSpeed THEN
                             lastSentChat = TIMER
                             addMessageToChat me, myMessage$
                             sendData server, id_CHAT, myMessage$
                             myMessage$ = ""
-                        ELSEIF LEN(myMessage$) > 0 AND TIMER - lastSentChat < messageSpeed THEN
+                        ELSEIF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) < messageSpeed THEN
                             tooFast = True
                         END IF
                     END IF
@@ -471,14 +471,14 @@ DO
 
             IF tooFast THEN
                 DIM s AS INTEGER
-                s = _CEIL(messageSpeed - (TIMER - lastSentChat))
+                s = _CEIL(messageSpeed - (timeElapsedSince(lastSentChat)))
                 m$ = "(too fast - wait" + STR$(s) + " second" + LEFT$("s", ABS(s > 1)) + ")"
                 y = _HEIGHT - 50 - _FONTHEIGHT
                 COLOR _RGB32(0)
                 _PRINTSTRING (61, 1 + y), m$
                 COLOR _RGB32(200, 177, 44)
                 _PRINTSTRING (60, y), m$
-                IF TIMER - lastSentChat > messageSpeed THEN tooFast = False
+                IF timeElapsedSince(lastSentChat) > messageSpeed THEN tooFast = False
             END IF
         ELSE
             char$ = INKEY$
@@ -697,7 +697,7 @@ SUB updateParticles
             IF particle(i).x > _WIDTH(mapImage) OR particle(i).x < 0 OR particle(i).y > _HEIGHT(mapImage) OR particle(i).y < 0 THEN
                 particle(i).state = False
             ELSE
-                CircleFill particle(i).x + camera.x, particle(i).y + camera.y, particle(i).size, _RGB32(particle(i).r, particle(i).g, particle(i).b, map(TIMER - particle(i).start, 0, particle(i).duration, 255, 0))
+                CircleFill particle(i).x + camera.x, particle(i).y + camera.y, particle(i).size, _RGB32(particle(i).r, particle(i).g, particle(i).b, map(timeElapsedSince(particle(i).start), 0, particle(i).duration, 255, 0))
             END IF
         END IF
     NEXT
@@ -1040,7 +1040,7 @@ SUB settingsScreen
                 END IF
             END IF
         ELSEIF handshaking THEN
-            progressDialog "Connected! Handshaking...", TIMER - serverPing, 10
+            progressDialog "Connected! Handshaking...", timeElapsedSince(serverPing), 10
             getData server, serverStream
             WHILE parse(serverStream, id, value$)
                 SELECT CASE id
@@ -1060,7 +1060,7 @@ SUB settingsScreen
                         END IF
                 END SELECT
             WEND
-            IF TIMER - serverPing > 10 THEN
+            IF timeElapsedSince(serverPing) > 10 THEN
                 IF mode = mode_freeplay THEN
                     setError "No response from server. You're in free play mode.", 3
                     EXIT SUB
@@ -1386,7 +1386,7 @@ END SUB
 SUB showError
     IF errorDialog.state THEN
         dialog errorDialog.text
-        IF TIMER - errorDialog.start > errorDialog.duration THEN
+        IF timeElapsedSince(errorDialog.start) > errorDialog.duration THEN
             errorDialog.state = False
         END IF
     END IF
@@ -1394,13 +1394,13 @@ END SUB
 
 FUNCTION cursorBlink$
     STATIC lastBlink
-    IF TIMER - lastBlink < .5 THEN
+    IF timeElapsedSince(lastBlink) < .5 THEN
         cursorBlink$ = "_"
     ELSE
         cursorBlink$ = " "
     END IF
 
-    IF TIMER - lastBlink > 1 THEN
+    IF timeElapsedSince(lastBlink) > 1 THEN
         lastBlink = TIMER
     END IF
 END FUNCTION
@@ -1430,3 +1430,7 @@ FUNCTION getCVI% (buffer$)
     buffer$ = MID$(buffer$, 3)
 END FUNCTION
 
+FUNCTION timeElapsedSince! (startTime!)
+    IF startTime! > TIMER THEN startTime! = startTime! - 86400
+    timeElapsedSince! = TIMER - startTime!
+END FUNCTION

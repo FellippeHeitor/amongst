@@ -71,7 +71,7 @@ endSignal = CHR$(253) + CHR$(254) + CHR$(255)
 CONST timeout = 20
 
 DIM SHARED host AS LONG
-PRINT "Starting server (ver. "; _TRIM$(STR$(gameVersion)); ")... ";
+PRINT TIME$ + " Starting server (ver. "; _TRIM$(STR$(gameVersion)); ")... ";
 host = _OPENHOST("TCP/IP:51512")
 IF host = 0 THEN
     PRINT "Cannot listen on port 51512"
@@ -114,11 +114,11 @@ DO
                     EXIT FOR
                 END IF
             NEXT
-            PRINT "User at " + _CONNECTIONADDRESS$(newClient) + " connected as client #" + LTRIM$(STR$(i))
+            PRINT TIME$ + " User at " + _CONNECTIONADDRESS$(newClient) + " connected as client #" + LTRIM$(STR$(i))
         ELSE
             packet$ = MKI$(id_SERVERFULL) + endSignal
             PUT #newClient, , packet$
-            PRINT "Connection from " + _CONNECTIONADDRESS$(newClient) + " refused (server full)"
+            PRINT TIME$ + " Connection from " + _CONNECTIONADDRESS$(newClient) + " refused (server full)"
             CLOSE newClient
         END IF
     END IF
@@ -141,11 +141,11 @@ DO
         player(i).hasNewMessage = False
         player(i).hasNewSize = False
 
-        IF TIMER - player(i).ping > timeout THEN
+        IF timeElapsedSince(player(i).ping) > timeout THEN
             'player inactive
             player(i).state = False
             CLOSE player(i).handle
-            PRINT "Client #" + LTRIM$(STR$(i)) + " (" + player(i).name + ") lost connection."
+            PRINT TIME$ + " Client #" + LTRIM$(STR$(i)) + " (" + player(i).name + ") lost connection."
             totalClients = totalClients - 1
             _CONTINUE
         END IF
@@ -177,7 +177,7 @@ DO
                         player(i).name = player(i).name + m$
                         sendData player(i), id_NEWNAME, player(i).name
                     END IF
-                    PRINT "Client #" + LTRIM$(STR$(i)) + " has name " + player(i).name
+                    PRINT TIME$ + " Client #" + LTRIM$(STR$(i)) + " has name " + player(i).name
                 CASE id_COLOR 'received once per player
                     player(i).hasNewColor = True
                     DIM newcolor AS INTEGER, changed AS _BYTE
@@ -222,7 +222,7 @@ DO
                     player(i).state = False
                     CLOSE player(i).handle
                     totalClients = totalClients - 1
-                    PRINT "Client #" + LTRIM$(STR$(i)) + " (" + player(i).name + ") quit";
+                    PRINT TIME$ + " Client #" + LTRIM$(STR$(i)) + " (" + player(i).name + ") quit";
                     IF player(i).x = -1 AND player(i).y = -1 THEN
                         PRINT " - wrong version."
                     ELSE
@@ -233,7 +233,7 @@ DO
                     'temporary solution for triggering auto-update checks
                     checkUpdate = True
                     checkUpdateRequester = i
-                    PRINT "Update check requested;"
+                    PRINT TIME$ + " Update check requested;"
                 CASE id_CHAT
                     DIM chatMessage$
                     player(i).hasNewMessage = True
@@ -272,7 +272,7 @@ DO
                 newVersion = VAL(MID$(file$, INSTR(file$, "=") + 1))
 
                 IF newVersion > gameVersion THEN
-                    PRINT "Downloading new version ("; LTRIM$(STR$(newVersion)); ")... ";
+                    PRINT TIME$ + " Downloading new version ("; LTRIM$(STR$(newVersion)); ")... ";
 
                     IF INSTR(_OS$, "WIN") THEN
                         remoteFile$ = "server_win.exe"
@@ -442,5 +442,11 @@ END FUNCTION
 FUNCTION getCVI% (buffer$)
     getCVI% = CVI(LEFT$(buffer$, 2))
     buffer$ = MID$(buffer$, 3)
+END FUNCTION
+
+
+FUNCTION timeElapsedSince! (startTime!)
+    IF startTime! > TIMER THEN startTime! = startTime! - 86400
+    timeElapsedSince! = TIMER - startTime!
 END FUNCTION
 
