@@ -197,14 +197,14 @@ DO
                         sendData player(i), id_NEWCOLOR, MKI$(newcolor)
                     END IF
                 CASE id_SHOOT
-                    IF player(CVI(LEFT$(value$, 2))).size > 5 THEN
-                        player(CVI(LEFT$(value$, 2))).size = player(CVI(LEFT$(value$, 2))).size - 2
-                        FOR j = 1 TO maxUsers
-                            IF player(j).state = False THEN _CONTINUE
-                            sendData player(j), id_SHOOT, MKI$(i) + LEFT$(value$, 2)
-                            sendData player(j), id_SIZE, LEFT$(value$, 2) + MKI$(player(CVI(LEFT$(value$, 2))).size)
-                        NEXT
+                    IF player(CVI(value$)).size > 5 THEN
+                        player(CVI(value$)).size = player(CVI(value$)).size - 2
                     END IF
+                    FOR j = 1 TO maxUsers
+                        IF player(j).state = False THEN _CONTINUE
+                        sendData player(j), id_SHOOT, MKI$(i) + value$
+                        sendData player(j), id_SIZE, value$ + MKI$(player(CVI(value$)).size)
+                    NEXT
                 CASE id_POS
                     player(i).hasNewPosition = value$
                     player(i).x = getCVS(value$)

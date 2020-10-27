@@ -34,7 +34,7 @@ CONST id_UPDATESERVER = 17
 CONST id_KICK = 18
 
 CONST timeout = 20
-CONST updateThreshold = .05
+CONST dataSendThreshold = .5
 
 CONST windowWidth = 800
 CONST windowHeight = 600
@@ -67,6 +67,8 @@ TYPE object
     r AS INTEGER
     g AS INTEGER
     b AS INTEGER
+    gravity AS SINGLE
+    delay AS SINGLE
 END TYPE
 
 TYPE colorType
@@ -96,6 +98,7 @@ DIM SHARED userName$, userColor%
 DIM SHARED exitSign AS INTEGER
 DIM SHARED serverPing AS SINGLE
 DIM SHARED errorDialog AS object
+DIM radians AS SINGLE
 DIM idSet AS _BYTE, shipMovement AS _BYTE
 DIM currentPing AS SINGLE, waitingForPong AS _BYTE
 DIM id AS INTEGER, value$
@@ -121,6 +124,7 @@ generateImages
 
 intro
 DO
+    _FONT 16
     settingsScreen
 
     _FONT 8
@@ -151,7 +155,9 @@ DO
     ui(i).state = True
     ui(i).color = _RGB32(255)
 
-    IF mode > 0 THEN
+    chatOpen = False
+    myMessage$ = ""
+    IF mode > 0 OR server.handle <> 0 THEN
         idSet = False
     ELSE
         idSet = True
@@ -163,6 +169,7 @@ DO
         player(me).color = userColor%
         player(me).size = 15
     END IF
+
     DO
         CLS
 
@@ -178,6 +185,23 @@ DO
         _BLEND
 
         IF mode = mode_onlineclient OR server.handle <> 0 THEN
+            IF idSet THEN
+                IF player(me).basicInfoSent = False THEN
+                    player(me).basicInfoSent = True
+                    sendData server, id_COLOR, MKI$(player(me).color)
+                    sendData server, id_NAME, player(me).name
+                    sendData server, id_SIZE, MKI$(player(me).size)
+                END IF
+
+                IF timeElapsedSince(player(me).stateSent) > dataSendThreshold OR player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY THEN
+                    player(me).prevX = player(me).xv
+                    player(me).prevY = player(me).yv
+                    player(me).stateSent = TIMER
+                    sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y) + MKS$(player(me).xv) + MKS$(player(me).yv)
+                END IF
+            END IF
+
+
             IF waitingForPong = False THEN
                 serverPing = TIMER
                 sendData server, id_PING, ""
@@ -216,11 +240,17 @@ DO
                     CASE id_CHAT
                         addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
                     CASE id_SHOOT
-                        target = CVI(RIGHT$(value$, 2))
+                        id = getCVI(value$)
+                        IF id = me THEN _CONTINUE
+                        target = getCVI(value$)
                         IF target = me THEN score = score - 100
-                        addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                        addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
-                        thickLine player(CVI(LEFT$(value$, 2))).x + camera.x, player(CVI(LEFT$(value$, 2))).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
+                        addParticles "explosion", player(target).x, player(target).y, 0, 0, 0, 5, 0, _RGB32(255), .3
+                        addParticles "explosion", player(target).x, player(target).y, 0, 0, 0, 100, 0, colors(player(target).color).value, .3
+
+                        radians = _ATAN2(player(target).y - player(id).y, player(target).x - player(id).x)
+                        FOR i = 1 TO 20
+                            addParticles "projectile", player(id).x + COS(radians) * i, player(id).y + SIN(radians) * i, COS(radians) * 5, SIN(radians) * 5, 2, 1, .5, colors(player(id).color).value, 0
+                        NEXT
                     CASE id_PLAYERONLINE
                         player(CVI(value$)).state = True
                     CASE id_PLAYEROFFLINE
@@ -236,22 +266,6 @@ DO
                         EXIT DO
                 END SELECT
             WEND
-
-            IF idSet THEN
-                IF player(me).basicInfoSent = False THEN
-                    player(me).basicInfoSent = True
-                    sendData server, id_COLOR, MKI$(player(me).color)
-                    sendData server, id_NAME, player(me).name
-                    sendData server, id_SIZE, MKI$(player(me).size)
-                END IF
-
-                IF player(me).xv <> player(me).prevX OR player(me).yv <> player(me).prevY THEN
-                    player(me).prevX = player(me).xv
-                    player(me).prevY = player(me).yv
-                    player(me).stateSent = TIMER
-                    sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y) + MKS$(player(me).xv) + MKS$(player(me).yv)
-                END IF
-            END IF
 
             totalClients = 0
             FOR i = 1 TO UBOUND(player)
@@ -343,8 +357,13 @@ DO
         FOR i = 1 TO UBOUND(player)
             IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
 
-            player(i).x = player(i).x + player(i).xv
-            player(i).y = player(i).y + player(i).yv
+            IF i = me THEN
+                player(i).x = player(i).x + player(i).xv
+                player(i).y = player(i).y + player(i).yv
+            ELSE
+                player(i).x = lerp(player(i).x, player(i).x + player(i).xv, .8)
+                player(i).y = lerp(player(i).y, player(i).y + player(i).yv, .8)
+            END IF
 
             x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
             y = player(i).y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
@@ -364,9 +383,13 @@ DO
                     lastShot = TIMER
                     score = score + 100
                     sendData server, id_SHOOT, MKI$(target)
-                    addParticles player(target).x, player(target).y, 5, _RGB32(255)
-                    addParticles player(target).x, player(target).y, 100, colors(player(target).color).value
-                    thickLine player(me).x + camera.x, player(me).y + camera.y, player(target).x + camera.x, player(target).y + camera.y, 8, _RGB32(227, 78, 6, 80)
+                    addParticles "explosion", player(target).x, player(target).y, 0, 0, 0, 5, 0, _RGB32(255), .3
+                    addParticles "explosion", player(target).x, player(target).y, 0, 0, 0, 100, 0, colors(player(target).color).value, .3
+
+                    radians = _ATAN2(player(target).y - player(me).y, player(target).x - player(me).x)
+                    FOR i = 1 TO 20
+                        addParticles "projectile", player(me).x + COS(radians) * i, player(me).y + SIN(radians) * i, COS(radians) * 5, SIN(radians) * 5, 2, 1, .5, colors(player(me).color).value, 0
+                    NEXT
                 END IF
             END IF
         END IF
@@ -660,7 +683,7 @@ SUB thickLine (x1 AS SINGLE, y1 AS SINGLE, x2 AS SINGLE, y2 AS SINGLE, lineWeigh
     _FREEIMAGE colorSample
 END SUB
 
-SUB addParticles (x AS SINGLE, y AS SINGLE, total AS INTEGER, c AS _UNSIGNED LONG)
+SUB addParticles (kind$, x AS SINGLE, y AS SINGLE, xv AS SINGLE, yv AS SINGLE, size AS INTEGER, total AS INTEGER, duration AS SINGLE, c AS _UNSIGNED LONG, delay AS SINGLE)
     DIM addedP AS INTEGER, p AS INTEGER
     DIM a AS SINGLE
 
@@ -673,15 +696,30 @@ SUB addParticles (x AS SINGLE, y AS SINGLE, total AS INTEGER, c AS _UNSIGNED LON
         particle(p).state = True
         particle(p).x = x
         particle(p).y = y
-        a = RND * _PI(2)
-        particle(p).xv = COS(a) * (RND * 10)
-        particle(p).yv = SIN(a) * (RND * 10)
         particle(p).r = _RED32(c)
         particle(p).g = _GREEN32(c)
         particle(p).b = _BLUE32(c)
-        particle(p).size = _CEIL(RND * 3)
         particle(p).start = TIMER
-        particle(p).duration = RND
+        IF duration THEN
+            particle(p).duration = duration
+        ELSE
+            particle(p).duration = RND
+        END IF
+        particle(p).delay = delay
+
+        SELECT CASE kind$
+            CASE "explosion"
+                a = RND * _PI(2)
+                particle(p).xv = COS(a) * (RND * 10)
+                particle(p).yv = SIN(a) * (RND * 10)
+                particle(p).size = _CEIL(RND * 3)
+                particle(p).gravity = .1
+            CASE "projectile"
+                particle(p).xv = xv
+                particle(p).yv = yv
+                particle(p).size = size
+                particle(p).gravity = 0
+        END SELECT
     LOOP UNTIL addedP >= total
 END SUB
 
@@ -689,11 +727,10 @@ SUB updateParticles
     DIM i AS INTEGER
 
     FOR i = 1 TO UBOUND(particle)
-        CONST gravity = .1
-        IF particle(i).state THEN
+        IF particle(i).state AND (timeElapsedSince(particle(i).start) >= particle(i).delay) THEN
             particle(i).xv = particle(i).xv + particle(i).xa
             particle(i).x = particle(i).x + particle(i).xv
-            particle(i).yv = particle(i).yv + particle(i).ya + gravity
+            particle(i).yv = particle(i).yv + particle(i).ya + particle(i).gravity
             particle(i).y = particle(i).y + particle(i).yv
 
             IF particle(i).x > _WIDTH(mapImage) OR particle(i).x < 0 OR particle(i).y > _HEIGHT(mapImage) OR particle(i).y < 0 THEN
@@ -1174,8 +1211,9 @@ SUB settingsScreen
     dummyPlayer.x = 100
     dummyPlayer.y = 120
     dummyPlayer.size = 15
-    dummyPlayer.color = 1
+    IF userColor% > 0 THEN dummyPlayer.color = userColor% ELSE dummyPlayer.color = 1
     IF LEN(COMMAND$) = 0 THEN dummyPlayer.name = "Player 1" ELSE dummyPlayer.name = COMMAND$
+    IF LEN(userName$) > 0 THEN dummyPlayer.name = userName$
     RETURN
 END SUB
 
