@@ -787,7 +787,10 @@ SUB generateImages
     READ j
     FOR i = 1 TO j
         READ x, y
-        PSET (x, y), _RGB32(0, 177, 0)
+        CircleFill x, y, 1, _RGB32(0, 177, 0)
+    NEXT
+    FOR i = 0 TO _HEIGHT STEP 3
+        LINE (3, i)-(_WIDTH - 4, i), _RGB32(0, 139, 0, 100)
     NEXT
     _DEST 0
 
@@ -991,8 +994,8 @@ SUB settingsScreen
         _PUTIMAGE (COS(shipFlotation) * shipFloatAmplitude, SIN(shipFlotation) * shipFloatAmplitude), settingsScreenImage
         _BLEND
 
-        x = dummyPlayer.x + camera.x + COS(shipFlotation) * shipFloatAmplitude
-        y = dummyPlayer.y + camera.y + SIN(shipFlotation) * shipFloatAmplitude
+        x = dummyPlayer.x + COS(shipFlotation) * shipFloatAmplitude
+        y = dummyPlayer.y + SIN(shipFlotation) * shipFloatAmplitude
         CircleFill x, y + 6, dummyPlayer.size + 5, _RGB32(0, 50)
         CircleFill x, y, dummyPlayer.size + 5, _RGB32(0)
         CircleFill x, y, dummyPlayer.size, colors(dummyPlayer.color).value
