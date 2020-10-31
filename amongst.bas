@@ -159,6 +159,7 @@ DO
     myMessage$ = ""
     IF mode > 0 OR server.handle <> 0 THEN
         idSet = False
+        IF me THEN player(me).basicInfoSent = False
     ELSE
         idSet = True
         me = 1
@@ -263,6 +264,7 @@ DO
                     CASE id_KICK
                         setError "Kicked from server. Reason:" + CHR$(10) + value$, 3
                         CLOSE server.handle
+                        server.handle = 0
                         EXIT DO
                 END SELECT
             WEND
@@ -317,6 +319,7 @@ DO
             IF currentPing > timeout THEN
                 setError "Connection lost (timed out)", 4
                 CLOSE server.handle
+                server.handle = 0
                 EXIT DO
             END IF
             m$ = LTRIM$(STR$(currentPing))
@@ -470,6 +473,7 @@ DO
                         ELSEIF myMessage$ = ">quit" THEN
                             IF mode = mode_onlineclient OR server.handle <> 0 THEN sendData server, id_PLAYERQUIT, ""
                             CLOSE server.handle
+                            server.handle = 0
                             EXIT DO
                         ELSEIF myMessage$ = ">updateserver" THEN
                             'temporary solution for triggering auto-update checks
@@ -1090,12 +1094,14 @@ SUB settingsScreen
                         setError "Server full.", 2
                         handshaking = False
                         CLOSE server.handle
+                        server.handle = 0
                     CASE id_GAMEVERSION
                         IF CVI(value$) <> gameVersion THEN
                             setError "Server version incompatible.", 2
                             sendData server, id_GAMEVERSION, ""
                             sendData server, id_PLAYERQUIT, ""
                             CLOSE server.handle
+                            server.handle = 0
                             handshaking = False
                         ELSE
                             EXIT SUB
