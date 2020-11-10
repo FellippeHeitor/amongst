@@ -77,6 +77,8 @@ TYPE colorType
 END TYPE
 
 REDIM SHARED ui(1 TO 1) AS object, mouseDownOn AS INTEGER, uiClicked AS _BYTE
+DIM SHARED mouseIsDown AS _BYTE, mouseDownX AS INTEGER, mouseDownY AS INTEGER
+DIM SHARED mb1 AS _BYTE, mb2 AS _BYTE, mx AS INTEGER, my AS INTEGER
 REDIM SHARED serverList(0) AS object, mouseWheel AS INTEGER
 DIM SHARED focus AS INTEGER
 DIM SHARED endSignal AS STRING
@@ -250,6 +252,7 @@ DO
                     CASE id_NAME
                         player(CVI(LEFT$(value$, 2))).name = MID$(value$, 3)
                     CASE id_CHAT
+                        hasUnreadMessages = True
                         addMessageToChat CVI(LEFT$(value$, 2)), MID$(value$, 3)
                     CASE id_SHOOT
                         id = getCVI(value$)
@@ -473,6 +476,16 @@ DO
                 _FONT 16
                 _PUTIMAGE (50, 50), chatLogImage
 
+                'DIM SHARED mouseIsDown AS _BYTE, mouseDownX AS INTEGER, mouseDownY AS INTEGER
+                'DIM SHARED mb1 AS _BYTE, mb2 AS _BYTE, mx AS INTEGER, my AS INTEGER
+                IF mouseIsDown THEN
+                    IF mouseDownX > 50 AND mouseDownX < 50 + _WIDTH(chatLogImage) AND mouseDownY > 50 AND mouseDownY < 50 + _HEIGHT(chatLogImage) THEN
+                        'dragging the chat log
+                        chatScroll = chatScroll - (mouseDownY - my)
+                        mouseDownY = my
+                    END IF
+                END IF
+
                 CONST messageSpeed = 1.5
                 char$ = INKEY$
                 SELECT CASE char$
@@ -582,7 +595,6 @@ SUB addMessageToChat (id AS INTEGER, text$)
         chat(UBOUND(chat)).name = player(id).name
         chat(UBOUND(chat)).color = player(id).color
         chat(UBOUND(chat)).text = text$
-        hasUnreadMessages = True
     ELSE
         setError text$, 4
         'chat(UBOUND(chat)).name = "SYSTEM:"
@@ -1250,8 +1262,6 @@ SUB settingsScreen
 END SUB
 
 SUB uiCheck
-    STATIC mouseIsDown AS _BYTE
-    STATIC mb1 AS _BYTE, mb2 AS _BYTE, mx AS INTEGER, my AS INTEGER
     DIM i AS INTEGER
 
     mouseWheel = 0
@@ -1279,8 +1289,12 @@ SUB uiCheck
 
     IF mb1 THEN
         uiClicked = False
-        mouseDownOn = focus
-        mouseIsDown = True
+        IF NOT mouseIsDown THEN
+            mouseDownOn = focus
+            mouseIsDown = True
+            mouseDownX = mx
+            mouseDownY = my
+        END IF
     ELSE
         IF mouseIsDown THEN
             IF mouseDownOn THEN
