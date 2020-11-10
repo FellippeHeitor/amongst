@@ -82,7 +82,7 @@ DIM SHARED focus AS INTEGER
 DIM SHARED endSignal AS STRING
 DIM SHARED mainWindow AS LONG, mapImage AS LONG, worldMapImage AS LONG
 DIM SHARED settingsScreenImage AS LONG, dialogImage AS LONG
-DIM SHARED scanLinesImage AS LONG
+DIM SHARED scanLinesImage AS LONG, chatCanvas AS LONG
 DIM SHARED messageIcon AS LONG
 DIM SHARED particle(1000) AS object
 DIM SHARED mode AS INTEGER
@@ -98,6 +98,8 @@ DIM SHARED userName$, userColor%
 DIM SHARED exitSign AS INTEGER
 DIM SHARED serverPing AS SINGLE
 DIM SHARED errorDialog AS object
+DIM SHARED totalDownloaded AS _UNSIGNED _INTEGER64, firstDownload AS _BYTE
+DIM SHARED downloadStart AS SINGLE
 DIM radians AS SINGLE
 DIM idSet AS _BYTE, shipMovement AS _BYTE
 DIM currentPing AS SINGLE, waitingForPong AS _BYTE
@@ -325,6 +327,9 @@ DO
             m$ = LTRIM$(STR$(currentPing))
             m$ = MID$(m$, INSTR(m$, ".") + 1)
             m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"
+            'DIM SHARED totalDownloaded AS _UNSIGNED _INTEGER64, firstDownload AS _BYTE
+            'DIM SHARED downloadStart AS SINGLE
+            m$ = m$ + " - " + LTRIM$(STR$(INT(totalDownloaded / timeElapsedSince(downloadStart)))) + " B/s (" + LTRIM$(STR$(totalDownloaded)) + " bytes)"
             _PRINTSTRING (_WIDTH - 150 - _PRINTWIDTH(m$), 0), m$
 
             _FONT 16
@@ -422,14 +427,21 @@ DO
 
             IF chatOpen THEN
                 hasUnreadMessages = False
-                LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0, 150), BF
-                LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0), B
+                IF chatCanvas = 0 THEN
+                    chatCanvas = _NEWIMAGE(_WIDTH - 100, _HEIGHT - 100, 32)
+                END IF
+                _DEST chatCanvas
+                _PRINTMODE _KEEPBACKGROUND
+                CLS
+                _CLEARCOLOR _RGB32(0)
+                LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0, 150), BF
+                LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0), B
                 _FONT 16
                 COLOR _RGB32(0)
                 FOR i = 1 TO UBOUND(chat)
                     IF chat(i).state THEN
-                        y = 65 + _FONTHEIGHT * ((i - 1) * 2)
-                        LINE (55, y - 10)-(_WIDTH - 55, y + 18), _RGB32(255, 80), BF
+                        y = 15 + _FONTHEIGHT * ((i - 1) * 2)
+                        LINE (5, y - 10)-(_WIDTH - 5, y + 18), _RGB32(255, 80), BF
                         _FONT 8
                         x = 60
                         IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).name)
@@ -446,6 +458,9 @@ DO
                         _PRINTSTRING (x, y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
                     END IF
                 NEXT
+                _DEST 0
+                _FONT 16
+                _PUTIMAGE (50, 50), chatCanvas
 
                 CONST messageSpeed = 1.5
                 char$ = INKEY$
@@ -589,6 +604,7 @@ END SUB
 SUB getData (client AS object, buffer AS STRING)
     DIM incoming$
     GET #client.handle, , incoming$
+    totalDownloaded = totalDownloaded + LEN(incoming$)
     buffer = buffer + incoming$
 END SUB
 
@@ -983,6 +999,7 @@ SUB settingsScreen
     GOSUB setUi
     CONST maxAttempts = 5
     CONST mapX = 0, mapY = 240
+    firstDownload = False
 
     DO
         IF attemptingToConnect = False AND handshaking = False AND errorDialog.state = False THEN
@@ -1087,6 +1104,13 @@ SUB settingsScreen
             END IF
         ELSEIF handshaking THEN
             progressDialog "Connected! Handshaking...", timeElapsedSince(serverPing), 10
+            'DIM SHARED totalDownloaded AS _UNSIGNED _INTEGER64, firstDownload AS _BYTE
+            'DIM SHARED downloadStart AS SINGLE
+            IF firstDownload = False THEN
+                firstDownload = True
+                downloadStart = TIMER
+                totalDownloaded = 0
+            END IF
             getData server, serverStream
             WHILE parse(serverStream, id, value$)
                 SELECT CASE id
