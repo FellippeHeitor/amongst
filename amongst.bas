@@ -77,12 +77,12 @@ TYPE colorType
 END TYPE
 
 REDIM SHARED ui(1 TO 1) AS object, mouseDownOn AS INTEGER, uiClicked AS _BYTE
-REDIM SHARED serverList(0) AS object
+REDIM SHARED serverList(0) AS object, mouseWheel AS INTEGER
 DIM SHARED focus AS INTEGER
 DIM SHARED endSignal AS STRING
 DIM SHARED mainWindow AS LONG, mapImage AS LONG, worldMapImage AS LONG
-DIM SHARED settingsScreenImage AS LONG, dialogImage AS LONG
-DIM SHARED scanLinesImage AS LONG, chatCanvas AS LONG
+DIM SHARED settingsScreenImage AS LONG, dialogImage AS LONG, chatLogImage AS LONG
+DIM SHARED scanLinesImage AS LONG
 DIM SHARED messageIcon AS LONG
 DIM SHARED particle(1000) AS object
 DIM SHARED mode AS INTEGER
@@ -91,15 +91,14 @@ DIM SHARED serverStream AS STRING
 DIM SHARED player(1 TO 10) AS object, me AS INTEGER
 DIM SHARED colors(1 TO 12) AS colorType, r AS INTEGER, g AS INTEGER, b AS INTEGER
 DIM SHARED warning(1 TO 30) AS object
-DIM SHARED chat(1 TO 14) AS object, hasUnreadMessages AS _BYTE, chatOpen AS _BYTE
+REDIM SHARED chat(1 TO 100) AS object, hasUnreadMessages AS _BYTE, chatOpen AS _BYTE
+DIM SHARED chatScroll AS INTEGER
 DIM SHARED chosenServer$
 DIM SHARED server AS object
 DIM SHARED userName$, userColor%
 DIM SHARED exitSign AS INTEGER
 DIM SHARED serverPing AS SINGLE
 DIM SHARED errorDialog AS object
-DIM SHARED totalDownloaded AS _UNSIGNED _INTEGER64, firstDownload AS _BYTE
-DIM SHARED downloadStart AS SINGLE
 DIM radians AS SINGLE
 DIM idSet AS _BYTE, shipMovement AS _BYTE
 DIM currentPing AS SINGLE, waitingForPong AS _BYTE
@@ -128,6 +127,16 @@ intro
 DO
     _FONT 16
     settingsScreen
+
+    'reset chat history, if any
+    FOR i = 1 TO UBOUND(chat)
+        chat(i).state = False
+    NEXT
+    _FONT 16
+    IF chatLogImage = 0 THEN
+        chatLogImage = _NEWIMAGE(windowWidth - 100, windowHeight - 100 - _FONTHEIGHT * 3, 32)
+    END IF
+    chatScroll = -(_FONTHEIGHT * 2 * UBOUND(chat)) + _HEIGHT(chatLogImage)
 
     _FONT 8
     _PRINTMODE _KEEPBACKGROUND
@@ -327,9 +336,6 @@ DO
             m$ = LTRIM$(STR$(currentPing))
             m$ = MID$(m$, INSTR(m$, ".") + 1)
             m$ = LEFT$(STRING$(3 - LEN(m$), "0") + m$, 3) + "ms"
-            'DIM SHARED totalDownloaded AS _UNSIGNED _INTEGER64, firstDownload AS _BYTE
-            'DIM SHARED downloadStart AS SINGLE
-            m$ = m$ + " - " + LTRIM$(STR$(INT(totalDownloaded / timeElapsedSince(downloadStart)))) + " B/s (" + LTRIM$(STR$(totalDownloaded)) + " bytes)"
             _PRINTSTRING (_WIDTH - 150 - _PRINTWIDTH(m$), 0), m$
 
             _FONT 16
@@ -427,40 +433,45 @@ DO
 
             IF chatOpen THEN
                 hasUnreadMessages = False
-                IF chatCanvas = 0 THEN
-                    chatCanvas = _NEWIMAGE(_WIDTH - 100, _HEIGHT - 100, 32)
-                END IF
-                _DEST chatCanvas
+                LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0, 150), BF
+                LINE (50, 50)-(_WIDTH - 50, _HEIGHT - 50), _RGB32(0), B
+
+                _DEST chatLogImage
                 _PRINTMODE _KEEPBACKGROUND
+                chatScroll = chatScroll - mouseWheel * 15
+                IF chatScroll < -(_FONTHEIGHT * 2 * UBOUND(chat)) + _HEIGHT(chatLogImage) THEN
+                    chatScroll = -(_FONTHEIGHT * 2 * UBOUND(chat)) + _HEIGHT(chatLogImage)
+                END IF
+                IF chatScroll > 0 THEN chatScroll = 0
                 CLS
                 _CLEARCOLOR _RGB32(0)
-                LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0, 150), BF
-                LINE (0, 0)-(_WIDTH - 1, _HEIGHT - 1), _RGB32(0), B
                 _FONT 16
                 COLOR _RGB32(0)
                 FOR i = 1 TO UBOUND(chat)
+                    y = chatScroll + 15 + _FONTHEIGHT * ((i - 1) * 2)
                     IF chat(i).state THEN
-                        y = 15 + _FONTHEIGHT * ((i - 1) * 2)
-                        LINE (5, y - 10)-(_WIDTH - 5, y + 18), _RGB32(255, 80), BF
+                        IF y > _HEIGHT(chatLogImage) THEN EXIT FOR
+                        LINE (5, y - 10)-(_WIDTH - 5, y + 18), _RGB32(255, 100), BF
                         _FONT 8
-                        x = 60
-                        IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).name)
-                        COLOR _RGB32(100)
-                        _PRINTSTRING (1 + x, 1 + y - 8), chat(i).name
-                        COLOR colors(chat(i).color).value
-                        _PRINTSTRING (x, y - 8), chat(i).name
+                        x = 10
+                        IF chat(i).id = me THEN x = _WIDTH - 10 - _PRINTWIDTH(chat(i).name)
+                        printOutline x, y - 8, chat(i).name, colors(chat(i).color).value, _RGB32(0)
                         _FONT 16
-                        x = 60
-                        IF chat(i).id = me THEN x = _WIDTH - 60 - _PRINTWIDTH(chat(i).text)
-                        COLOR _RGB32(100)
-                        _PRINTSTRING (1 + x, 1 + y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
-                        COLOR _RGB32(255)
-                        _PRINTSTRING (x, y), LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH)
+                        x = 10
+                        IF chat(i).id = me THEN x = _WIDTH - 10 - _PRINTWIDTH(chat(i).text)
+                        printOutline x, y, LEFT$(chat(i).text, (_WIDTH - 100) \ _FONTWIDTH), _RGB32(255), _RGB32(0)
+                    ELSE
+                        IF y > 0 AND y < _HEIGHT(chatLogImage) THEN
+                            chatScroll = chatScroll - y
+                            IF chatScroll < -(_FONTHEIGHT * 2 * UBOUND(chat)) + _HEIGHT(chatLogImage) THEN
+                                chatScroll = -(_FONTHEIGHT * 2 * UBOUND(chat)) + _HEIGHT(chatLogImage)
+                            END IF
+                        END IF
                     END IF
                 NEXT
                 _DEST 0
                 _FONT 16
-                _PUTIMAGE (50, 50), chatCanvas
+                _PUTIMAGE (50, 50), chatLogImage
 
                 CONST messageSpeed = 1.5
                 char$ = INKEY$
@@ -496,21 +507,21 @@ DO
                             myMessage$ = ""
                             chatOpen = False
                         ELSE
-                            IF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) > messageSpeed THEN
+                            IF LEN(myMessage$) > 0 THEN 'AND timeElapsedSince(lastSentChat) > messageSpeed THEN
                                 lastSentChat = TIMER
                                 addMessageToChat me, myMessage$
                                 sendData server, id_CHAT, myMessage$
                                 myMessage$ = ""
-                            ELSEIF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) < messageSpeed THEN
-                                tooFast = True
+                                'ELSEIF LEN(myMessage$) > 0 AND timeElapsedSince(lastSentChat) < messageSpeed THEN
+                                '    tooFast = True
                             END IF
                         END IF
                 END SELECT
 
                 COLOR _RGB32(0)
-                _PRINTSTRING (61, 61 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + cursorBlink
+                _PRINTSTRING (61, _HEIGHT - 61 - _FONTHEIGHT * 1.5), "> " + myMessage$ + cursorBlink
                 COLOR _RGB32(255)
-                _PRINTSTRING (60, 60 + _FONTHEIGHT * (i * 2) - 24), "> " + myMessage$ + cursorBlink
+                _PRINTSTRING (60, _HEIGHT - 60 - _FONTHEIGHT * 1.5), "> " + myMessage$ + cursorBlink
                 _FONT 8
 
                 IF tooFast THEN
@@ -550,10 +561,7 @@ DO
 
         IF mode = mode_onlineclient OR server.handle <> 0 THEN
             _FONT 16
-            COLOR _RGB32(0)
-            _PRINTSTRING (1, 1), "Score:" + STR$(score)
-            COLOR _RGB32(255)
-            _PRINTSTRING (0, 0), "Score:" + STR$(score)
+            printOutline 0, 0, "Score:" + STR$(score), _RGB32(255), _RGB32(0)
             _FONT 8
         END IF
 
@@ -604,7 +612,6 @@ END SUB
 SUB getData (client AS object, buffer AS STRING)
     DIM incoming$
     GET #client.handle, , incoming$
-    totalDownloaded = totalDownloaded + LEN(incoming$)
     buffer = buffer + incoming$
 END SUB
 
@@ -999,7 +1006,6 @@ SUB settingsScreen
     GOSUB setUi
     CONST maxAttempts = 5
     CONST mapX = 0, mapY = 240
-    firstDownload = False
 
     DO
         IF attemptingToConnect = False AND handshaking = False AND errorDialog.state = False THEN
@@ -1104,13 +1110,6 @@ SUB settingsScreen
             END IF
         ELSEIF handshaking THEN
             progressDialog "Connected! Handshaking...", timeElapsedSince(serverPing), 10
-            'DIM SHARED totalDownloaded AS _UNSIGNED _INTEGER64, firstDownload AS _BYTE
-            'DIM SHARED downloadStart AS SINGLE
-            IF firstDownload = False THEN
-                firstDownload = True
-                downloadStart = TIMER
-                totalDownloaded = 0
-            END IF
             getData server, serverStream
             WHILE parse(serverStream, id, value$)
                 SELECT CASE id
@@ -1251,7 +1250,7 @@ SUB settingsScreen
 END SUB
 
 SUB uiCheck
-    STATIC mouseIsDown AS _BYTE, mouseWheel AS INTEGER
+    STATIC mouseIsDown AS _BYTE
     STATIC mb1 AS _BYTE, mb2 AS _BYTE, mx AS INTEGER, my AS INTEGER
     DIM i AS INTEGER
 
@@ -1512,3 +1511,15 @@ FUNCTION lerp! (start!, stp!, amt!)
     lerp! = amt! * (stp! - start!) + start!
 END FUNCTION
 
+SUB printOutline (x AS INTEGER, y AS INTEGER, text$, fg AS _UNSIGNED LONG, bg AS _UNSIGNED LONG)
+    DIM hlX AS INTEGER, hlY AS INTEGER
+    COLOR bg
+    FOR hlX = -1 TO 1 STEP 2
+        FOR hlY = -1 TO 1 STEP 2
+            _PRINTSTRING (x + hlX, y + hlY), text$
+        NEXT
+    NEXT
+
+    COLOR fg
+    _PRINTSTRING (x, y), text$
+END SUB
