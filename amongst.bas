@@ -44,8 +44,10 @@ TYPE object
     handle AS LONG
     x AS SINGLE
     prevX AS SINGLE
+    nextX AS SINGLE
     y AS SINGLE
     prevY AS SINGLE
+    nextY AS SINGLE
     xv AS SINGLE
     yv AS SINGLE
     xa AS SINGLE
@@ -184,6 +186,8 @@ DO
         player(me).size = 15
     END IF
 
+    DIM rx, ry, rr
+
     DO
         CLS
 
@@ -211,7 +215,9 @@ DO
                     player(me).prevX = player(me).xv
                     player(me).prevY = player(me).yv
                     player(me).stateSent = TIMER
-                    sendData server, id_POS, MKS$(player(me).x) + MKS$(player(me).y) + MKS$(player(me).xv) + MKS$(player(me).yv)
+
+                    ' This number 50 is just made up, but it should be calculated form average ping.
+                    sendData server, id_POS, MKS$(player(me).x + 50 * player(me).xv) + MKS$(player(me).y + 50 * player(me).yv) + MKS$(player(me).xv) + MKS$(player(me).yv)
                 END IF
             END IF
 
@@ -231,6 +237,8 @@ DO
                         player(me).name = userName$
                         player(me).x = _WIDTH / 2 + COS(RND * _PI) * (RND * 100)
                         player(me).y = _HEIGHT / 2 + SIN(RND * _PI) * (RND * 100)
+                        player(me).nextX = player(me).x
+                        player(me).nextY = player(me).y
                         player(me).state = True
                         player(me).color = userColor%
                         player(me).size = 15
@@ -245,8 +253,8 @@ DO
                     CASE id_POS
                         'playerStream(CVI(LEFT$(value$, 2))) = playerStream(CVI(LEFT$(value$, 2))) + MID$(value$, 3)
                         id = getCVI(value$)
-                        player(id).x = getCVS(value$)
-                        player(id).y = getCVS(value$)
+                        player(id).nextX = getCVS(value$)
+                        player(id).nextY = getCVS(value$)
                         player(id).xv = getCVS(value$)
                         player(id).yv = getCVS(value$)
                     CASE id_NAME
@@ -296,10 +304,22 @@ DO
             IF chatOpen = False THEN
                 player(me).xv = 0
                 player(me).yv = 0
-                IF _KEYDOWN(keyUP) THEN player(me).yv = -playerSpeed
-                IF _KEYDOWN(keyDOWN) THEN player(me).yv = playerSpeed
-                IF _KEYDOWN(keyLEFT) THEN player(me).xv = -playerSpeed
-                IF _KEYDOWN(keyRIGHT) THEN player(me).xv = playerSpeed
+                IF _KEYDOWN(keyUP) THEN
+                    player(me).nextY = player(me).y - playerSpeed
+                    player(me).yv = -playerSpeed
+                END IF
+                IF _KEYDOWN(keyDOWN) THEN
+                    player(me).nextY = player(me).y + playerSpeed
+                    player(me).yv = playerSpeed
+                END IF
+                IF _KEYDOWN(keyLEFT) THEN
+                    player(me).nextX = player(me).x - playerSpeed
+                    player(me).xv = -playerSpeed
+                END IF
+                IF _KEYDOWN(keyRIGHT) THEN
+                    player(me).nextX = player(me).x + playerSpeed
+                    player(me).xv = playerSpeed
+                END IF
 
                 IF player(me).x < 0 THEN player(me).x = 0
                 IF player(me).y < 0 THEN player(me).y = 0
@@ -374,12 +394,19 @@ DO
         FOR i = 1 TO UBOUND(player)
             IF player(i).state = False OR player(i).color = 0 THEN _CONTINUE
 
-            IF i = me THEN
-                player(i).x = player(i).x + player(i).xv
-                player(i).y = player(i).y + player(i).yv
+            rx = player(i).nextX - player(i).x
+            ry = player(i).nextY - player(i).y
+            rr = SQR(rx ^ 2 + ry ^ 2)
+            IF rr > 5 THEN
+                rx = rx / rr
+                ry = ry / rr
+                player(i).x = player(i).x + rx * playerSpeed
+                player(i).y = player(i).y + ry * playerSpeed
             ELSE
-                player(i).x = lerp(player(i).x, player(i).x + player(i).xv, .8)
-                player(i).y = lerp(player(i).y, player(i).y + player(i).yv, .8)
+                rx = 0
+                ry = 0
+                player(i).x = player(i).nextX
+                player(i).y = player(i).nextY
             END IF
 
             x = player(i).x + camera.x + COS(shipFlotation) * shipFloatAmplitude
@@ -1377,7 +1404,7 @@ FUNCTION addUiItem& (name$, x AS INTEGER, y AS INTEGER, w AS INTEGER, h AS INTEG
     ui(i).y = y
     ui(i).w = w
     ui(i).h = h
-
+    ui(i).state = False
     addUiItem = i
 END FUNCTION
 
@@ -1537,3 +1564,4 @@ SUB printOutline (x AS INTEGER, y AS INTEGER, text$, fg AS _UNSIGNED LONG, bg AS
     COLOR fg
     _PRINTSTRING (x, y), text$
 END SUB
+
